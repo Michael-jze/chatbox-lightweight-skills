@@ -48,6 +48,13 @@ const electronHandler: ElectronIPC = {
     ipcRenderer.on('navigate-to', listener)
     return () => ipcRenderer.off('navigate-to', listener)
   },
+  onWorkspaceChanged: (callback: (payload: { workspaceRoot: string }) => void) => {
+    const listener = (_event: unknown, payload: { workspaceRoot: string }) => {
+      callback(payload)
+    }
+    ipcRenderer.on('skills:workspace-changed', listener)
+    return () => ipcRenderer.off('skills:workspace-changed', listener)
+  },
 
   // Auto-updater events
   onUpdaterChecking: createListener('updater:checking'),

@@ -54,3 +54,66 @@ export function listWorkspaceDirectory(workspaceRoot: string, dirPath: string): 
 
   return result
 }
+
+export function resolveRelativeWorkspaceFile(workspaceRoot: string, relativePath: string): string {
+  const rel = relativePath.trim()
+  if (!rel) {
+    throw new Error('Path is required')
+  }
+  if (path.isAbsolute(rel) || rel.includes('..')) {
+    throw new Error('Path must be relative to the workspace and must not contain ..')
+  }
+  return resolvePathWithinWorkspace(workspaceRoot, path.join(workspaceRoot, rel))
+}
+
+export function writeWorkspaceFile(
+  workspaceRoot: string,
+  relativePath: string,
+  content: string,
+  mode: 'overwrite' | 'append' = 'overwrite'
+): { success: true; bytes: number; relativePath: string } {
+  const target = resolveRelativeWorkspaceFile(workspaceRoot, relativePath)
+  fs.mkdirSync(path.dirname(target), { recursive: true })
+  if (mode === 'append') {
+    fs.appendFileSync(target, content, 'utf8')
+  } else {
+    fs.writeFileSync(target, content, 'utf8')
+  }
+  return { success: true, bytes: content.length, relativePath: relativePath.trim() }
+}
+
+export function readWorkspaceFile(
+  workspaceRoot: string,
+  relativePath: string,
+  options: { lineOffset?: number; maxLines?: number } = {}
+): { content: string; totalLines: number; lineOffset: number; linesReturned: number } {
+  const target = resolveRelativeWorkspaceFile(workspaceRoot, relativePath)
+  if (!fs.existsSync(target)) {
+    throw new Error(`File not found: ${relativePath}`)
+  }
+  const stat = fs.statSync(target)
+  if (!stat.isFile()) {
+    throw new Error('Not a file')
+  }
+  const raw = fs.readFileSync(target, 'utf8')
+  const lines = raw.split('\n')
+  const lineOffset = Math.max(0, options.lineOffset ?? 0)
+  const maxLines = Math.min(2000, Math.max(1, options.maxLines ?? 500))
+  const slice = lines.slice(lineOffset, lineOffset + maxLines)
+  const numbered = slice
+    .map((line, index) => {
+      const num = String(lineOffset + index + 1).padStart(6, ' ')
+      return `${num}\t${line}`
+    })
+    .join('\n')
+  let content = numbered
+  if (lines.length > lineOffset + maxLines) {
+    content += `\n[truncated] showing lines ${lineOffset + 1}-${lineOffset + slice.length} of ${lines.length}`
+  }
+  return {
+    content,
+    totalLines: lines.length,
+    lineOffset,
+    linesReturned: slice.length,
+  }
+}

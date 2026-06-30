@@ -8,6 +8,7 @@ export interface ElectronIPC {
   onUpdateDownloaded: (callback: () => void) => () => void
   addMcpStdioTransportEventListener: (transportId: string, event: string, callback?: (...args: any[]) => void) => void
   onNavigate: (callback: (path: string) => void) => () => void
+  onWorkspaceChanged: (callback: (payload: { workspaceRoot: string }) => void) => () => void
 
   // Auto-updater events
   onUpdaterChecking: (callback: () => void) => () => void

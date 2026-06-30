@@ -7,25 +7,32 @@ description: Read and write text files in the current conversation workspace dir
 
 Scripts run in the **session workspace** (`SKILL_SANDBOX_DIR`). Use paths **relative to the workspace root** only.
 
-Requires `run_skill_script` (session must have a workspace directory — pick one in the input area or use the default sandbox).
+## Preferred tools (multi-line / long content)
 
-## read_file
+Use **`workspace_write`** / **`workspace_read`** (or **`sandbox_write`** / **`sandbox_read`** when sandbox is available).
+
+```text
+workspace_write relative_path=notes.md content="# Title\n\nBody..."
+workspace_read relative_path=notes.md
+```
+
+Do **not** put large markdown bodies inside `run_skill_script` `arguments` — JSON tool calls will fail.
+
+## read_file (short reads via script)
 
 ```text
 run_skill_script skill_name=workspace-files script_name=read_file.js arguments=["notes.md"]
-run_skill_script skill_name=workspace-files script_name=read_file.js arguments=["subdir/report.txt", "100", "50"]
 ```
 
-Optional args: `path`, `line_offset` (default 0), `max_lines` (default 500).
+Prefer `workspace_read` for most cases.
 
-## write_file
+## write_file (single-line only via script)
 
 ```text
 run_skill_script skill_name=workspace-files script_name=write_file.js arguments=["notes.md", "Hello world"]
-run_skill_script skill_name=workspace-files script_name=write_file.js arguments=["notes.md", "append line", "append"]
 ```
 
-Third arg `mode`: `overwrite` (default) or `append`.
+For anything longer than one line, use **`workspace_write`**.
 
 ## If write is unavailable
 

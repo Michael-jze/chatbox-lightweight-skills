@@ -16,7 +16,8 @@ import {
 import { parseSkillFile } from './parser'
 import { cleanupExpiredSandboxes, cleanupSessionSandbox, ensureSessionSandbox, resolveWorkspaceDir } from './runtime'
 import { runSkillScript } from './runner'
-import { listWorkspaceDirectory, resolvePathWithinWorkspace } from './workspace-tree'
+import { listWorkspaceDirectory, readWorkspaceFile, resolvePathWithinWorkspace, writeWorkspaceFile } from './workspace-tree'
+import { startWorkspaceWatch, stopWorkspaceWatch } from './workspace-watcher'
 import { resolveAiEnvRootAbsolute, resolveExtraSkillRoots, type SkillDiscoveryOptions } from './skill-roots'
 import { isValidSkillName } from './validation'
 
@@ -310,6 +311,86 @@ export function registerSkillsHandlers() {
       return { success: true }
     } catch (error) {
       log.error('skills:reveal-workspace-path failed', error)
+      throw error
+    }
+  })
+
+  ipcMain.handle('skills:open-workspace-path', async (_event, params: { workspaceRoot: string; targetPath: string }) => {
+    try {
+      const safePath = resolvePathWithinWorkspace(params.workspaceRoot, params.targetPath)
+      if (!fs.existsSync(safePath)) {
+        return { success: false, error: 'Path not found' }
+      }
+      const openError = await shell.openPath(safePath)
+      if (openError) {
+        return { success: false, error: openError }
+      }
+      return { success: true }
+    } catch (error) {
+      log.error('skills:open-workspace-path failed', error)
+      throw error
+    }
+  })
+
+  ipcMain.handle(
+    'skills:write-workspace-file',
+    async (
+      _event,
+      params: {
+        workspaceRoot: string
+        relativePath: string
+        content: string
+        mode?: 'overwrite' | 'append'
+      }
+    ) => {
+      try {
+        return writeWorkspaceFile(params.workspaceRoot, params.relativePath, params.content, params.mode ?? 'overwrite')
+      } catch (error) {
+        log.error('skills:write-workspace-file failed', error)
+        throw error
+      }
+    }
+  )
+
+  ipcMain.handle(
+    'skills:read-workspace-file',
+    async (
+      _event,
+      params: {
+        workspaceRoot: string
+        relativePath: string
+        lineOffset?: number
+        maxLines?: number
+      }
+    ) => {
+      try {
+        return readWorkspaceFile(params.workspaceRoot, params.relativePath, {
+          lineOffset: params.lineOffset,
+          maxLines: params.maxLines,
+        })
+      } catch (error) {
+        log.error('skills:read-workspace-file failed', error)
+        throw error
+      }
+    }
+  )
+
+  ipcMain.handle('skills:watch-workspace', (event, params: { workspaceRoot: string }) => {
+    try {
+      startWorkspaceWatch(params.workspaceRoot, event.sender)
+      return { success: true }
+    } catch (error) {
+      log.error('skills:watch-workspace failed', error)
+      throw error
+    }
+  })
+
+  ipcMain.handle('skills:unwatch-workspace', (event, params: { workspaceRoot?: string }) => {
+    try {
+      stopWorkspaceWatch(event.sender.id, params.workspaceRoot)
+      return { success: true }
+    } catch (error) {
+      log.error('skills:unwatch-workspace failed', error)
       throw error
     }
   })

@@ -1,7 +1,7 @@
 import { ActionIcon, Box, Flex, Menu, ScrollArea, Text, Tooltip } from '@mantine/core'
 import type { WorkspaceDirEntry } from '@shared/types/skills'
 import { IconChevronLeft, IconChevronRight, IconFile, IconFolder } from '@tabler/icons-react'
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ScalableIcon } from '@/components/common/ScalableIcon'
 import { skillsController } from '@/packages/skills/controller'
@@ -28,6 +28,7 @@ function TreeNode({
   depth,
   nodeStates,
   onToggle,
+  onOpen,
   onContextMenu,
 }: {
   entry: WorkspaceDirEntry
@@ -35,11 +36,21 @@ function TreeNode({
   depth: number
   nodeStates: Record<string, TreeNodeState>
   onToggle: (path: string) => void
+  onOpen: (entry: WorkspaceDirEntry) => void
   onContextMenu: (path: string, event: React.MouseEvent) => void
 }) {
   const state = nodeStates[entry.path]
   const isDir = entry.type === 'directory'
   const expanded = isDir && state?.expanded
+  const clickTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  useEffect(() => {
+    return () => {
+      if (clickTimerRef.current) {
+        clearTimeout(clickTimerRef.current)
+      }
+    }
+  }, [])
 
   return (
     <Box>
@@ -51,9 +62,22 @@ function TreeNode({
         className="cursor-pointer rounded hover:bg-chatbox-background-secondary"
         style={{ paddingLeft: depth * 12 + 4 }}
         onClick={() => {
-          if (isDir) {
-            onToggle(entry.path)
+          if (!isDir) return
+          if (clickTimerRef.current) {
+            clearTimeout(clickTimerRef.current)
           }
+          clickTimerRef.current = setTimeout(() => {
+            clickTimerRef.current = null
+            onToggle(entry.path)
+          }, 200)
+        }}
+        onDoubleClick={(e) => {
+          e.preventDefault()
+          if (clickTimerRef.current) {
+            clearTimeout(clickTimerRef.current)
+            clickTimerRef.current = null
+          }
+          onOpen(entry)
         }}
         onContextMenu={(e) => {
           e.preventDefault()
@@ -86,6 +110,7 @@ function TreeNode({
           depth={depth + 1}
           nodeStates={nodeStates}
           onToggle={onToggle}
+          onOpen={onOpen}
           onContextMenu={onContextMenu}
         />
       ))}
@@ -102,11 +127,38 @@ export default function SessionWorkspacePanel({ session }: { session: Session })
   const [contextPath, setContextPath] = useState<string | null>(null)
   const [contextOpened, setContextOpened] = useState(false)
   const [contextPosition, setContextPosition] = useState({ x: 0, y: 0 })
+  const nodeStatesRef = useRef(nodeStates)
+  nodeStatesRef.current = nodeStates
 
   const refreshRoot = useCallback(async (root: string) => {
     const entries = await skillsController.listWorkspaceDir({ workspaceRoot: root, dirPath: root })
     setRootEntries(entries)
     setNodeStates({})
+  }, [])
+
+  const refreshTree = useCallback(async (root: string) => {
+    const entries = await skillsController.listWorkspaceDir({ workspaceRoot: root, dirPath: root })
+    setRootEntries(entries)
+
+    const expandedPaths = Object.entries(nodeStatesRef.current)
+      .filter(([, state]) => state.expanded)
+      .map(([dirPath]) => dirPath)
+
+    await Promise.all(
+      expandedPaths.map(async (dirPath) => {
+        const children = await skillsController.listWorkspaceDir({ workspaceRoot: root, dirPath })
+        setNodeStates((prev) => {
+          const current = prev[dirPath]
+          if (!current?.expanded) {
+            return prev
+          }
+          return {
+            ...prev,
+            [dirPath]: { ...current, entries: children, loaded: true },
+          }
+        })
+      })
+    )
   }, [])
 
   useEffect(() => {
@@ -125,6 +177,25 @@ export default function SessionWorkspacePanel({ session }: { session: Session })
       cancelled = true
     }
   }, [session.id, session.skillWorkspaceDir, refreshRoot])
+
+  useEffect(() => {
+    if (!workspaceRoot) {
+      return undefined
+    }
+
+    void skillsController.watchWorkspace(workspaceRoot)
+    const unsubscribe = skillsController.onWorkspaceChanged((payload) => {
+      if (payload.workspaceRoot !== workspaceRoot) {
+        return
+      }
+      void refreshTree(workspaceRoot)
+    })
+
+    return () => {
+      unsubscribe()
+      void skillsController.unwatchWorkspace(workspaceRoot)
+    }
+  }, [workspaceRoot, refreshTree])
 
   const loadChildren = useCallback(async (dirPath: string) => {
     if (!workspaceRoot) return []
@@ -159,6 +230,28 @@ export default function SessionWorkspacePanel({ session }: { session: Session })
     setContextPosition({ x: event.clientX, y: event.clientY })
     setContextOpened(true)
   }, [])
+
+  const handleOpenPath = useCallback(
+    async (targetPath: string) => {
+      if (!workspaceRoot) return
+      try {
+        const result = await skillsController.openWorkspacePath(targetPath, workspaceRoot)
+        if (!result.success) {
+          addToast(result.error ?? t('Failed to open file'))
+        }
+      } catch (error) {
+        addToast(error instanceof Error ? error.message : String(error))
+      }
+    },
+    [workspaceRoot, t]
+  )
+
+  const handleOpen = useCallback(
+    (entry: WorkspaceDirEntry) => {
+      void handleOpenPath(entry.path)
+    },
+    [handleOpenPath]
+  )
 
   const handleReveal = useCallback(async () => {
     if (!contextPath || !workspaceRoot) return
@@ -227,6 +320,7 @@ export default function SessionWorkspacePanel({ session }: { session: Session })
                 depth={0}
                 nodeStates={nodeStates}
                 onToggle={onToggle}
+                onOpen={handleOpen}
                 onContextMenu={onContextMenu}
               />
             ))
@@ -242,6 +336,7 @@ export default function SessionWorkspacePanel({ session }: { session: Session })
           />
         </Menu.Target>
         <Menu.Dropdown>
+          <Menu.Item onClick={() => contextPath && void handleOpenPath(contextPath)}>{t('Open')}</Menu.Item>
           <Menu.Item onClick={() => void handleReveal()}>{t('Reveal in Finder')}</Menu.Item>
           <Menu.Item onClick={() => void handleCopyPath()}>{t('Copy path')}</Menu.Item>
         </Menu.Dropdown>

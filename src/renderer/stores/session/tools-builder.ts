@@ -9,7 +9,7 @@ import fileToolSet from '@/packages/model-calls/toolsets/file'
 import { getToolSetDescription, parseLinkTool, webSearchTool } from '@/packages/model-calls/toolsets/web-search'
 import { skillsController } from '@/packages/skills/controller'
 import { formatGlobalMemoryInstructions, loadGlobalMemoryForPrompt } from '@/packages/skills/global-memory'
-import { runAiBinForSession, runSkillScriptForSession } from '@/packages/skills/session-workspace'
+import { runAiBinForSession, runSkillScriptForSession, ensureSessionSkillWorkspace } from '@/packages/skills/session-workspace'
 import { PROVIDERS_WITH_PARSE_LINK } from '@/packages/web-search'
 import * as settingActions from '@/stores/settingActions'
 import { buildTaskSystemPrompt } from '@/stores/taskSystemPrompt'
@@ -52,7 +52,7 @@ export function generateSkillsXml(skills: SkillInfo[], toolUseSupported = false)
     .join('\n')
 
   const toolHint = toolUseSupported
-    ? "\nWhen a task matches a skill's description, use load_skill to load its full instructions before proceeding. Use sandbox_ls, sandbox_bash, sandbox_read, and sandbox_write for workspace file operations (list, mkdir, mv, cp, shell commands). Use run_ai_bin for AI_Envirionment BINS commands (ai_bin_*). Use run_skill_script only for built-in workspace-files scripts or documented skill scripts.\n"
+    ? "\nWhen a task matches a skill's description, use load_skill to load its full instructions before proceeding. For workspace files: prefer workspace_write / workspace_read (or sandbox_write / sandbox_read when available) for any multi-line or long content. Use sandbox_ls and sandbox_bash for shell operations. Use run_ai_bin for AI_Envirionment BINS commands (ai_bin_*). Do NOT pass large file bodies in run_skill_script arguments.\n"
     : '\n'
 
   return `
@@ -189,11 +189,14 @@ export async function buildToolsForSession(
 
           tools.run_skill_script = tool({
             description:
-              "Execute a script from a skill's scripts directory using the configured Python or Node interpreter. Scripts run in the session sandbox directory.",
+              "Execute a script from a skill's scripts directory. For workspace file I/O with multi-line content, use workspace_write or sandbox_write instead — do not pass large text in the arguments array.",
             inputSchema: z.object({
               skill_name: z.string().describe('The name of the skill'),
               script_name: z.string().describe('The script filename to execute'),
-              arguments: z.array(z.string()).optional().describe('Optional arguments to pass to the script'),
+              arguments: z
+                .array(z.string())
+                .optional()
+                .describe('Optional short CLI arguments only (single-line values)'),
             }),
             execute: async (input: { skill_name: string; script_name: string; arguments?: string[] }) => {
               return runSkillScriptForSession(skillWorkspace, {
@@ -202,6 +205,45 @@ export async function buildToolsForSession(
                 args: input.arguments,
                 runtime: skillRuntime,
               })
+            },
+          })
+
+          tools.workspace_write = tool({
+            description:
+              'Write text to a file in the session workspace. Use for any multi-line or long content. Path is relative to the workspace root.',
+            inputSchema: z.object({
+              relative_path: z.string().describe('File path relative to the workspace root, e.g. notes/report.md'),
+              content: z.string().describe('Full file content to write'),
+              mode: z.enum(['overwrite', 'append']).optional().describe('Default: overwrite'),
+            }),
+            execute: async (input: { relative_path: string; content: string; mode?: 'overwrite' | 'append' }) => {
+              const workspaceDir = await ensureSessionSkillWorkspace(skillWorkspace)
+              const result = await skillsController.writeWorkspaceFile({
+                workspaceRoot: workspaceDir,
+                relativePath: input.relative_path,
+                content: input.content,
+                mode: input.mode,
+              })
+              return `Wrote ${result.bytes} bytes to ${result.relativePath}`
+            },
+          })
+
+          tools.workspace_read = tool({
+            description: 'Read a text file from the session workspace. Path is relative to the workspace root.',
+            inputSchema: z.object({
+              relative_path: z.string().describe('File path relative to the workspace root'),
+              line_offset: z.number().optional().describe('0-based line offset (default 0)'),
+              max_lines: z.number().optional().describe('Max lines to return (default 500)'),
+            }),
+            execute: async (input: { relative_path: string; line_offset?: number; max_lines?: number }) => {
+              const workspaceDir = await ensureSessionSkillWorkspace(skillWorkspace)
+              const result = await skillsController.readWorkspaceFile({
+                workspaceRoot: workspaceDir,
+                relativePath: input.relative_path,
+                lineOffset: input.line_offset,
+                maxLines: input.max_lines,
+              })
+              return { content: result.content, total_lines: result.totalLines }
             },
           })
         }

@@ -95,4 +95,38 @@ export const skillsController = {
   revealWorkspacePath(targetPath: string, workspaceRoot: string): Promise<{ success: boolean }> {
     return window.electronAPI.invoke('skills:reveal-workspace-path', { workspaceRoot, targetPath })
   },
+
+  openWorkspacePath(targetPath: string, workspaceRoot: string): Promise<{ success: boolean; error?: string }> {
+    return window.electronAPI.invoke('skills:open-workspace-path', { workspaceRoot, targetPath })
+  },
+
+  writeWorkspaceFile(params: {
+    workspaceRoot: string
+    relativePath: string
+    content: string
+    mode?: 'overwrite' | 'append'
+  }): Promise<{ success: true; bytes: number; relativePath: string }> {
+    return window.electronAPI.invoke('skills:write-workspace-file', params)
+  },
+
+  readWorkspaceFile(params: {
+    workspaceRoot: string
+    relativePath: string
+    lineOffset?: number
+    maxLines?: number
+  }): Promise<{ content: string; totalLines: number; lineOffset: number; linesReturned: number }> {
+    return window.electronAPI.invoke('skills:read-workspace-file', params)
+  },
+
+  watchWorkspace(workspaceRoot: string): Promise<{ success: boolean }> {
+    return window.electronAPI.invoke('skills:watch-workspace', { workspaceRoot })
+  },
+
+  unwatchWorkspace(workspaceRoot?: string): Promise<{ success: boolean }> {
+    return window.electronAPI.invoke('skills:unwatch-workspace', { workspaceRoot })
+  },
+
+  onWorkspaceChanged(callback: (payload: { workspaceRoot: string }) => void): () => void {
+    return window.electronAPI.onWorkspaceChanged(callback)
+  },
 }
