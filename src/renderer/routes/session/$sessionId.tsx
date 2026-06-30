@@ -180,48 +180,52 @@ function RouteComponent() {
     [currentSession, skillWorkspaceLocked]
   )
 
-  return currentSession ? (
-    <div className="flex h-full min-h-0">
-      <div className="flex flex-col flex-1 min-w-0 min-h-0">
-        <Header session={currentSession} />
+  const showWorkspacePanel = featureFlags.skills
 
+  return currentSession ? (
+    <div className="flex flex-col h-full min-h-0">
+      <Header session={currentSession} />
+
+      <div className="flex flex-1 min-h-0 w-full">
         <MessageList
           ref={messageListRef}
           key={`message-list${currentSessionId}`}
           currentSession={currentSession}
-          className="flex-1 min-h-0"
+          className="flex-1 min-h-0 min-w-0"
         />
-
-        <Box className="relative shrink-0">
-        {featureFlags.skills && (
-          <Flex direction="column" px="sm" pb="xs" gap={4}>
-            <SkillExecutionIndicator sessionId={currentSession.id} />
-            <SkillWorkspaceMenu
-              workspaceDir={currentSession.skillWorkspaceDir}
-              onSelect={(path) => void onSelectSkillWorkspace(path)}
-              disabled={skillWorkspaceLocked}
-            />
-          </Flex>
-        )}
-        <ErrorBoundary name="session-inputbox">
-          <InputBox
-            key={`input-box${currentSession.id}`}
-            sessionId={currentSession.id}
-            sessionType={currentSession.type}
-            model={model}
-            onStartNewThread={onStartNewThread}
-            onRollbackThread={onRollbackThread}
-            onSelectModel={onSelectModel}
-            onClickSessionSettings={onClickSessionSettings}
-            generating={!!lastGeneratingMessage}
-            onSubmit={onSubmit}
-            onStopGenerating={onStopGenerating}
-          />
-        </ErrorBoundary>
-        </Box>
-        <ThreadHistoryDrawer session={currentSession} />
+        {showWorkspacePanel && <SessionWorkspacePanel session={currentSession} />}
       </div>
-      {featureFlags.skills && <SessionWorkspacePanel session={currentSession} />}
+
+      <Box className="relative shrink-0">
+        <div className="w-full">
+          {featureFlags.skills && (
+            <Flex direction="column" px="sm" pb="xs" gap={4}>
+              <SkillExecutionIndicator sessionId={currentSession.id} />
+              <SkillWorkspaceMenu
+                workspaceDir={currentSession.skillWorkspaceDir}
+                onSelect={(path) => void onSelectSkillWorkspace(path)}
+                disabled={skillWorkspaceLocked}
+              />
+            </Flex>
+          )}
+          <ErrorBoundary name="session-inputbox">
+            <InputBox
+              key={`input-box${currentSession.id}`}
+              sessionId={currentSession.id}
+              sessionType={currentSession.type}
+              model={model}
+              onStartNewThread={onStartNewThread}
+              onRollbackThread={onRollbackThread}
+              onSelectModel={onSelectModel}
+              onClickSessionSettings={onClickSessionSettings}
+              generating={!!lastGeneratingMessage}
+              onSubmit={onSubmit}
+              onStopGenerating={onStopGenerating}
+            />
+          </ErrorBoundary>
+        </div>
+        <ThreadHistoryDrawer session={currentSession} />
+      </Box>
     </div>
   ) : (
     !isFetching && (

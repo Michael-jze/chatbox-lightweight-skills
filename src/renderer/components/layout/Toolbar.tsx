@@ -12,7 +12,7 @@ import {
 import { useSetAtom } from 'jotai'
 import { useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
-import { useIsLargeScreen, useIsSmallScreen } from '@/hooks/useScreenChange'
+import { useIsSmallScreen } from '@/hooks/useScreenChange'
 import { router } from '@/router'
 import * as atoms from '@/stores/atoms'
 import { deleteSession, getSession } from '@/stores/chatStore'
@@ -20,8 +20,6 @@ import { clear as clearSession } from '@/stores/sessionActions'
 import { useUIStore } from '@/stores/uiStore'
 import ActionMenu from '../ActionMenu'
 import Broom from '../icons/Broom'
-import LayoutExpand from '../icons/LayoutExpand'
-import LayoutShrink from '../icons/LayoutShrink'
 import { ScalableIcon } from '../common/ScalableIcon'
 
 /**
@@ -31,12 +29,9 @@ import { ScalableIcon } from '../common/ScalableIcon'
 export default function Toolbar({ sessionId }: { sessionId: string }) {
   const { t } = useTranslation()
   const isSmallScreen = useIsSmallScreen()
-  const isLargeScreen = useIsLargeScreen()
 
   const setOpenSearchDialog = useUIStore((s) => s.setOpenSearchDialog)
   const setThreadHistoryDrawerOpen = useSetAtom(atoms.showThreadHistoryDrawerAtom)
-  const widthFull = useUIStore((s) => s.widthFull)
-  const setWidthFull = useUIStore((s) => s.setWidthFull)
 
   const handleExportAndSave = () => {
     NiceModal.show('export-chat')
@@ -78,12 +73,6 @@ export default function Toolbar({ sessionId }: { sessionId: string }) {
       ) : (
         <ActionIcon variant="subtle" size={28} color="chatbox-secondary" onClick={() => setOpenSearchDialog(true)}>
           <IconSearch strokeWidth={1.8} />
-        </ActionIcon>
-      )}
-
-      {isLargeScreen && (
-        <ActionIcon variant="subtle" size={28} color="chatbox-secondary" onClick={() => setWidthFull(!widthFull)}>
-          {widthFull ? <LayoutExpand strokeWidth={1.8} /> : <LayoutShrink strokeWidth={1.8} />}
         </ActionIcon>
       )}
 

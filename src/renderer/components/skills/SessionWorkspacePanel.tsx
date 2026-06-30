@@ -4,12 +4,17 @@ import { IconChevronLeft, IconChevronRight, IconFile, IconFolder } from '@tabler
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ScalableIcon } from '@/components/common/ScalableIcon'
+import { useIsSmallScreen } from '@/hooks/useScreenChange'
 import { skillsController } from '@/packages/skills/controller'
 import { ensureSessionSkillWorkspace } from '@/packages/skills/session-workspace'
 import { add as addToast } from '@/stores/toastActions'
+import { uiStore, useUIStore } from '@/stores/uiStore'
 import type { Session } from '@shared/types'
 
-const PANEL_WIDTH = 280
+const DEFAULT_PANEL_WIDTH = 280
+const MIN_PANEL_WIDTH = 200
+const MAX_PANEL_WIDTH = 520
+const COLLAPSED_WIDTH = 32
 
 type TreeNodeState = {
   entries: WorkspaceDirEntry[]
@@ -20,6 +25,10 @@ type TreeNodeState = {
 function getDirName(dirPath: string): string {
   const parts = dirPath.replace(/\/$/, '').split(/[/\\]/)
   return parts[parts.length - 1] || dirPath
+}
+
+function clampPanelWidth(width: number): number {
+  return Math.max(MIN_PANEL_WIDTH, Math.min(MAX_PANEL_WIDTH, width))
 }
 
 function TreeNode({
@@ -86,7 +95,7 @@ function TreeNode({
       >
         {isDir ? (
           <ScalableIcon
-            icon={expanded ? IconChevronRight : IconChevronRight}
+            icon={IconChevronRight}
             size={14}
             className={`text-chatbox-tertiary shrink-0 transition-transform ${expanded ? 'rotate-90' : ''}`}
           />
@@ -120,7 +129,11 @@ function TreeNode({
 
 export default function SessionWorkspacePanel({ session }: { session: Session }) {
   const { t } = useTranslation()
-  const [collapsed, setCollapsed] = useState(false)
+  const isSmallScreen = useIsSmallScreen()
+  const storedPanelWidth = useUIStore((s) => s.workspacePanelWidth)
+  const panelWidth = storedPanelWidth ?? DEFAULT_PANEL_WIDTH
+  const [collapsed, setCollapsed] = useState(isSmallScreen)
+  const [isResizing, setIsResizing] = useState(false)
   const [workspaceRoot, setWorkspaceRoot] = useState<string | null>(null)
   const [rootEntries, setRootEntries] = useState<WorkspaceDirEntry[]>([])
   const [nodeStates, setNodeStates] = useState<Record<string, TreeNodeState>>({})
@@ -128,7 +141,15 @@ export default function SessionWorkspacePanel({ session }: { session: Session })
   const [contextOpened, setContextOpened] = useState(false)
   const [contextPosition, setContextPosition] = useState({ x: 0, y: 0 })
   const nodeStatesRef = useRef(nodeStates)
+  const resizeStartX = useRef(0)
+  const resizeStartWidth = useRef(panelWidth)
   nodeStatesRef.current = nodeStates
+
+  useEffect(() => {
+    if (isSmallScreen) {
+      setCollapsed(true)
+    }
+  }, [isSmallScreen])
 
   const refreshRoot = useCallback(async (root: string) => {
     const entries = await skillsController.listWorkspaceDir({ workspaceRoot: root, dirPath: root })
@@ -196,6 +217,40 @@ export default function SessionWorkspacePanel({ session }: { session: Session })
       void skillsController.unwatchWorkspace(workspaceRoot)
     }
   }, [workspaceRoot, refreshTree])
+
+  const handleResizeStart = useCallback(
+    (e: React.MouseEvent) => {
+      if (isSmallScreen || collapsed) return
+      e.preventDefault()
+      e.stopPropagation()
+      setIsResizing(true)
+      resizeStartX.current = e.clientX
+      resizeStartWidth.current = panelWidth
+    },
+    [collapsed, isSmallScreen, panelWidth]
+  )
+
+  useEffect(() => {
+    if (!isResizing) return
+
+    const handleMouseMove = (e: MouseEvent) => {
+      const deltaX = resizeStartX.current - e.clientX
+      const newWidth = clampPanelWidth(resizeStartWidth.current + deltaX)
+      uiStore.getState().setWorkspacePanelWidth(newWidth)
+    }
+
+    const handleMouseUp = () => {
+      setIsResizing(false)
+    }
+
+    document.addEventListener('mousemove', handleMouseMove)
+    document.addEventListener('mouseup', handleMouseUp)
+
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove)
+      document.removeEventListener('mouseup', handleMouseUp)
+    }
+  }, [isResizing])
 
   const loadChildren = useCallback(async (dirPath: string) => {
     if (!workspaceRoot) return []
@@ -274,11 +329,24 @@ export default function SessionWorkspacePanel({ session }: { session: Session })
     setContextOpened(false)
   }, [contextPath, t])
 
+  const handleHeaderDoubleClick = useCallback(() => {
+    if (!workspaceRoot) return
+    void handleOpenPath(workspaceRoot)
+  }, [workspaceRoot, handleOpenPath])
+
+  const handleHeaderContextMenu = useCallback(
+    (event: React.MouseEvent) => {
+      if (!workspaceRoot) return
+      onContextMenu(workspaceRoot, event)
+    },
+    [onContextMenu, workspaceRoot]
+  )
+
   if (collapsed) {
     return (
       <Box
         className="border-l border-solid border-chatbox-border-primary bg-chatbox-background-primary shrink-0 flex flex-col items-center py-sm"
-        w={32}
+        w={COLLAPSED_WIDTH}
       >
         <Tooltip label={t('Workspace files')} position="left">
           <ActionIcon variant="subtle" color="chatbox-secondary" onClick={() => setCollapsed(false)}>
@@ -291,16 +359,37 @@ export default function SessionWorkspacePanel({ session }: { session: Session })
 
   return (
     <Box
-      className="border-l border-solid border-chatbox-border-primary bg-chatbox-background-primary shrink-0 flex flex-col min-h-0"
-      w={PANEL_WIDTH}
+      className="relative border-l border-solid border-chatbox-border-primary bg-chatbox-background-primary shrink-0 flex flex-col min-h-0"
+      w={panelWidth}
     >
-      <Flex align="center" justify="space-between" px="sm" py="xs" className="border-b border-solid border-chatbox-border-primary shrink-0">
+      <Box
+        className="absolute left-0 top-0 bottom-0 w-1 cursor-col-resize z-10 hover:bg-chatbox-tint-brand/30"
+        onMouseDown={handleResizeStart}
+      />
+
+      <Flex
+        align="center"
+        justify="space-between"
+        px="sm"
+        py="xs"
+        className="border-b border-solid border-chatbox-border-primary shrink-0 cursor-pointer select-none"
+        onDoubleClick={handleHeaderDoubleClick}
+        onContextMenu={handleHeaderContextMenu}
+      >
         <Tooltip label={workspaceRoot ?? ''} multiline maw={400}>
           <Text size="xs" fw={600} lineClamp={1} className="min-w-0 flex-1">
             {workspaceRoot ? getDirName(workspaceRoot) : t('Workspace')}
           </Text>
         </Tooltip>
-        <ActionIcon variant="subtle" color="chatbox-tertiary" size="sm" onClick={() => setCollapsed(true)}>
+        <ActionIcon
+          variant="subtle"
+          color="chatbox-tertiary"
+          size="sm"
+          onClick={(e) => {
+            e.stopPropagation()
+            setCollapsed(true)
+          }}
+        >
           <ScalableIcon icon={IconChevronRight} size={16} />
         </ActionIcon>
       </Flex>
@@ -330,15 +419,12 @@ export default function SessionWorkspacePanel({ session }: { session: Session })
 
       <Menu opened={contextOpened} onChange={setContextOpened} position="bottom-start">
         <Menu.Target>
-          <Box
-            className="fixed w-0 h-0"
-            style={{ left: contextPosition.x, top: contextPosition.y }}
-          />
+          <Box className="fixed w-0 h-0" style={{ left: contextPosition.x, top: contextPosition.y }} />
         </Menu.Target>
         <Menu.Dropdown>
           <Menu.Item onClick={() => contextPath && void handleOpenPath(contextPath)}>{t('Open')}</Menu.Item>
           <Menu.Item onClick={() => void handleReveal()}>{t('Reveal in Finder')}</Menu.Item>
-          <Menu.Item onClick={() => void handleCopyPath()}>{t('Copy path')}</Menu.Item>
+          <Menu.Item onClick={() => void handleCopyPath()}>{t('Copy absolute path')}</Menu.Item>
         </Menu.Dropdown>
       </Menu>
     </Box>

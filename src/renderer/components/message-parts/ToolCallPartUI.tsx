@@ -522,6 +522,83 @@ const SkillToolCallUI: FC<{ part: MessageToolCallPart }> = memo(({ part }) => {
 
 SkillToolCallUI.displayName = 'SkillToolCallUI'
 
+// ─── Agent Step (collapsed skill work) ──────────────────────────────
+
+export const AgentStepGroupUI: FC<{
+  toolCallCount: number
+  reasoningCount: number
+  hasWorkParts: boolean
+  isComplete: boolean
+  workContent: React.ReactNode
+  resultContent: React.ReactNode | null
+}> = memo(({ toolCallCount, reasoningCount, hasWorkParts, isComplete, workContent, resultContent }) => {
+  const { t } = useTranslation()
+  const [expanded, setExpanded] = useState(!isComplete)
+
+  useEffect(() => {
+    if (isComplete) {
+      setExpanded(false)
+    }
+  }, [isComplete])
+
+  const showCollapsed = isComplete && hasWorkParts && !expanded
+
+  const summaryParts: string[] = []
+  if (toolCallCount > 0) {
+    summaryParts.push(t('{{count}} tool calls', { count: toolCallCount }))
+  }
+  if (reasoningCount > 0) {
+    summaryParts.push(t('{{count}} thinking', { count: reasoningCount }))
+  }
+  const summary = summaryParts.join(' · ')
+
+  return (
+    <Stack gap="xs" mb="xs">
+      {hasWorkParts &&
+        (showCollapsed ? (
+          <UnstyledButton onClick={() => setExpanded(true)}>
+            <Group
+              gap={6}
+              px={8}
+              py={8}
+              style={{
+                borderRadius: 'var(--mantine-radius-md)',
+                backgroundColor: 'var(--chatbox-background-gray-secondary)',
+                display: 'inline-flex',
+              }}
+            >
+              <IconTerminal size={16} color="var(--chatbox-tint-brand)" style={{ flexShrink: 0 }} />
+              <Text size="sm" fw={600} c="chatbox-secondary" lh={1}>
+                {t('Previous steps')}
+              </Text>
+              {summary ? (
+                <Text size="xs" c="chatbox-tertiary" lh={1}>
+                  {summary}
+                </Text>
+              ) : null}
+              <IconCheck size={16} color="var(--chatbox-tint-success)" style={{ flexShrink: 0 }} />
+              <IconChevronDown size={14} color="var(--chatbox-tertiary)" style={{ flexShrink: 0 }} />
+            </Group>
+          </UnstyledButton>
+        ) : (
+          <Box>
+            {isComplete && (
+              <UnstyledButton mb={4} onClick={() => setExpanded(false)}>
+                <Text size="xs" c="chatbox-brand">
+                  {t('Collapse')}
+                </Text>
+              </UnstyledButton>
+            )}
+            {workContent}
+          </Box>
+        ))}
+      {resultContent}
+    </Stack>
+  )
+})
+
+AgentStepGroupUI.displayName = 'AgentStepGroupUI'
+
 // ─── General Tool Call ──────────────────────────────────────────────
 
 const GeneralToolCallUI: FC<{ part: MessageToolCallPart }> = memo(({ part }) => {

@@ -160,7 +160,6 @@ const InputBox = forwardRef<InputBoxRef, InputBoxProps>(
     const { height: viewportHeight } = useViewportSize()
     const pasteLongTextAsAFile = useSettingsStore((state) => state.pasteLongTextAsAFile)
     const shortcuts = useSettingsStore((state) => state.shortcuts)
-    const widthFull = useUIStore((s) => s.widthFull) || fullWidth
     const saveBlob = useSaveBlob()
 
     const currentSessionId = sessionId
@@ -997,7 +996,7 @@ const InputBox = forwardRef<InputBoxRef, InputBoxProps>(
       return (
         <Box pt={0} pb={isSmallScreen ? 'md' : 'sm'} px="sm" id={dom.InputBoxID}>
           <Stack
-            className={cn('rounded-2xl bg-chatbox-background-secondary', widthFull ? 'w-full' : 'max-w-4xl mx-auto')}
+            className="rounded-2xl bg-chatbox-background-secondary w-full"
             gap="xs"
             p="md"
             align="center"
@@ -1016,7 +1015,7 @@ const InputBox = forwardRef<InputBoxRef, InputBoxProps>(
     return (
       <Box pt={0} pb={isSmallScreen ? 'md' : 'sm'} px="sm" id={dom.InputBoxID} {...getRootProps()}>
         <input className="hidden" {...getInputProps()} />
-        <Stack className={cn(widthFull ? 'w-full' : 'max-w-4xl mx-auto')} gap="xs">
+        <Stack className="w-full" gap="xs">
           {currentSessionId && <CompactionStatus sessionId={currentSessionId} />}
           <Stack
             className={cn(

@@ -103,8 +103,6 @@ type MessageRenderItem =
 const MessageList = forwardRef<MessageListRef, MessageListProps>((props, ref) => {
   const { t } = useTranslation()
   const isSmallScreen = useIsSmallScreen()
-  const widthFull = useUIStore((s) => s.widthFull)
-
   const { currentSession } = props
 
   const currentThreadHash = useMemo(
@@ -427,7 +425,7 @@ const MessageList = forwardRef<MessageListRef, MessageListProps>((props, ref) =>
                 })}
             increaseViewportBy={{ top: 2000, bottom: 2000 }}
             itemContent={(index, item) => {
-              const itemClassName = widthFull ? 'w-full' : 'max-w-4xl mx-auto'
+              const itemClassName = 'w-full'
               const isFirstItem = index === 0
               const isLastItem = index === renderItems.length - 1
 

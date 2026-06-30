@@ -49,7 +49,15 @@ import { isContainRenderableCode, MessageArtifact } from '../Artifact'
 import { AssistantAvatar, SystemAvatar, UserAvatar } from '../common/Avatar'
 import { ScalableIcon } from '../common/ScalableIcon'
 import Loading from '../icons/Loading'
-import { ReasoningContentUI, ToolCallPartUI, WebSearchGroupUI } from '../message-parts/ToolCallPartUI'
+import { ReasoningContentUI, AgentStepGroupUI, ToolCallPartUI, WebSearchGroupUI } from '../message-parts/ToolCallPartUI'
+import {
+  countReasoningInParts,
+  countToolCallsInParts,
+  groupAgentSteps,
+  groupWebSearchParts,
+  type DisplayContentPart,
+  type GroupedContentPart,
+} from '@/utils/agent-step-grouping'
 import { MessageAttachmentGrid } from './MessageAttachmentGrid'
 import MessageErrTips from './MessageErrTips'
 import MessageStatuses from './MessageLoading'
@@ -258,22 +266,14 @@ const _Message: FC<Props> = (props) => {
 
   const contentParts = msg.contentParts || []
 
-  const groupedContentParts = useMemo(() => {
-    const groups: Array<{ type: 'web_search_group'; parts: MessageToolCallPart[] } | (typeof contentParts)[number]> = []
-    for (const item of contentParts) {
-      if (item.type === 'tool-call' && (item as MessageToolCallPart).toolName === 'web_search') {
-        const last = groups[groups.length - 1]
-        if (last && 'parts' in last && last.type === 'web_search_group') {
-          last.parts.push(item as MessageToolCallPart)
-        } else {
-          groups.push({ type: 'web_search_group', parts: [item as MessageToolCallPart] })
-        }
-      } else {
-        groups.push(item)
-      }
+  const groupedContentParts = useMemo(() => groupWebSearchParts(contentParts), [contentParts])
+
+  const displayContentParts = useMemo((): DisplayContentPart[] => {
+    if (msg.role !== 'assistant') {
+      return groupedContentParts
     }
-    return groups
-  }, [contentParts])
+    return groupAgentSteps(groupedContentParts, !!msg.generating)
+  }, [groupedContentParts, msg.role, msg.generating])
 
   const CollapseButton = (
     <span
@@ -386,6 +386,124 @@ const _Message: FC<Props> = (props) => {
   const isUserBubble = isBubbleLayout && msg.role === 'user'
   const statusElements = <MessageStatuses statuses={msg.status} />
 
+  const renderGroupedPart = useCallback(
+    (item: GroupedContentPart, key: string) => {
+      if ('parts' in item && item.type === 'web_search_group') {
+        return <WebSearchGroupUI key={key} parts={item.parts} />
+      }
+      if (item.type === 'reasoning') {
+        return (
+          <div key={key}>
+            <ReasoningContentUI message={msg} part={item} onCopyReasoningContent={onCopyReasoningContent} />
+          </div>
+        )
+      }
+      if (item.type === 'text') {
+        return (
+          <div key={key}>
+            {enableMarkdownRendering && !isCollapsed ? (
+              <Markdown
+                uniqueId={key}
+                enableLaTeXRendering={enableLaTeXRendering}
+                enableMermaidRendering={enableMermaidRendering}
+                generating={msg.generating}
+                onCodeCopy={onCodeCopy}
+                onPreviewWebpage={onPreviewWebpage}
+              >
+                {item.text || ''}
+              </Markdown>
+            ) : (
+              <div className="break-words [overflow-wrap:anywhere] whitespace-pre-line">
+                {needCollapse && isCollapsed ? `${item.text.slice(0, collapseThreshold)}...` : item.text}
+                {needCollapse && isCollapsed && CollapseButton}
+              </div>
+            )}
+          </div>
+        )
+      }
+      if (item.type === 'info') {
+        return (
+          <Flex key={key} className="mb-2 ">
+            <Flex
+              className="bg-chatbox-background-brand-secondary border-0 border-l-2 border-solid border-chatbox-tint-brand rounded-r-md"
+              align="center"
+              gap="xxs"
+              px="xs"
+            >
+              <ScalableIcon icon={IconInfoCircle} size={16} className="flex-none text-chatbox-tint-brand" />
+              <Text size="xs" c="chatbox-brand">
+                {item.text}
+              </Text>
+            </Flex>
+          </Flex>
+        )
+      }
+      if (item.type === 'image') {
+        return props.sessionType !== 'picture' ? (
+          <div key={key} className="my-2">
+            <PictureGallery pictures={[item]} compact={msg.role === 'user'} />
+            {item.ocrResult && (
+              <div
+                className="my-2 p-2 rounded-md cursor-pointer transition-colors"
+                onClick={async (e) => {
+                  e.stopPropagation()
+                  await NiceModal.show('content-viewer', {
+                    title: t('OCR Text Content'),
+                    content: item.ocrResult,
+                  })
+                }}
+              >
+                {isUserBubble ? (
+                  <>
+                    <span className="block mb-1 text-xs text-white/80">
+                      {t('OCR Text')} ({item.ocrResult.length} {t('characters')})
+                    </span>
+                    <span className="block text-sm text-white line-clamp-2" title={item.ocrResult}>
+                      {item.ocrResult}
+                    </span>
+                    <span className="block mt-1 text-xs text-white/60">{t('Click to view full text')}</span>
+                  </>
+                ) : (
+                  <>
+                    <Text size="xs" className="block mb-1" c="chatbox-tertiary">
+                      {t('OCR Text')} ({item.ocrResult.length} {t('characters')})
+                    </Text>
+                    <Text size="sm" className="line-clamp-2" c="chatbox-secondary" title={item.ocrResult}>
+                      {item.ocrResult}
+                    </Text>
+                    <Text size="xs" className="mt-1 inline-block" c="blue">
+                      {t('Click to view full text')}
+                    </Text>
+                  </>
+                )}
+              </div>
+            )}
+          </div>
+        ) : null
+      }
+      if (item.type === 'tool-call') {
+        return <ToolCallPartUI key={key} part={item as MessageToolCallPart} />
+      }
+      return null
+    },
+    [
+      msg,
+      onCopyReasoningContent,
+      enableMarkdownRendering,
+      isCollapsed,
+      enableLaTeXRendering,
+      enableMermaidRendering,
+      onCodeCopy,
+      onPreviewWebpage,
+      needCollapse,
+      collapseThreshold,
+      CollapseButton,
+      isUserBubble,
+      props.sessionType,
+      t,
+    ]
+  )
+
   const messageContent = (
     <>
       {!isBubbleLayout && statusElements}
@@ -415,99 +533,26 @@ const _Message: FC<Props> = (props) => {
         >
           {msg.reasoningContent && <ReasoningContentUI message={msg} onCopyReasoningContent={onCopyReasoningContent} />}
           {getMessageText(msg, true, true).trim() === '' && <p></p>}
-          {groupedContentParts.length > 0 && (
+          {displayContentParts.length > 0 && (
             <div>
-              {groupedContentParts.map((item, index) =>
-                'parts' in item && item.type === 'web_search_group' ? (
-                  <WebSearchGroupUI key={`web-search-group-${msg.id}-${index}`} parts={item.parts} />
-                ) : item.type === 'reasoning' ? (
-                  <div key={`reasoning-${msg.id}-${index}`}>
-                    <ReasoningContentUI message={msg} part={item} onCopyReasoningContent={onCopyReasoningContent} />
-                  </div>
-                ) : item.type === 'text' ? (
-                  <div key={`text-${msg.id}-${index}`}>
-                    {enableMarkdownRendering && !isCollapsed ? (
-                      <Markdown
-                        uniqueId={`${msg.id}-${index}`}
-                        enableLaTeXRendering={enableLaTeXRendering}
-                        enableMermaidRendering={enableMermaidRendering}
-                        generating={msg.generating}
-                        onCodeCopy={onCodeCopy}
-                        onPreviewWebpage={onPreviewWebpage}
-                      >
-                        {item.text || ''}
-                      </Markdown>
-                    ) : (
-                      <div className="break-words [overflow-wrap:anywhere] whitespace-pre-line">
-                        {needCollapse && isCollapsed ? `${item.text.slice(0, collapseThreshold)}...` : item.text}
-                        {needCollapse && isCollapsed && CollapseButton}
-                      </div>
-                    )}
-                  </div>
-                ) : item.type === 'info' ? (
-                  <Flex key={`info-${item.text}`} className="mb-2 ">
-                    <Flex
-                      className="bg-chatbox-background-brand-secondary border-0 border-l-2 border-solid border-chatbox-tint-brand rounded-r-md"
-                      align="center"
-                      gap="xxs"
-                      px="xs"
-                    >
-                      <ScalableIcon icon={IconInfoCircle} size={16} className="flex-none text-chatbox-tint-brand" />
-                      <Text size="xs" c="chatbox-brand">
-                        {item.text}
-                      </Text>
-                    </Flex>
-                  </Flex>
-                ) : item.type === 'image' ? (
-                  props.sessionType !== 'picture' && (
-                    <div key={`image-${item.storageKey}`} className="my-2">
-                      <PictureGallery
-                        key={`image-${item.storageKey}`}
-                        pictures={[item]}
-                        compact={msg.role === 'user'}
-                      />
-                      {item.ocrResult && (
-                        <div
-                          className="my-2 p-2 rounded-md cursor-pointer transition-colors"
-                          onClick={async (e) => {
-                            e.stopPropagation()
-                            await NiceModal.show('content-viewer', {
-                              title: t('OCR Text Content'),
-                              content: item.ocrResult,
-                            })
-                          }}
-                        >
-                          {isUserBubble ? (
-                            <>
-                              <span className="block mb-1 text-xs text-white/80">
-                                {t('OCR Text')} ({item.ocrResult.length} {t('characters')})
-                              </span>
-                              <span className="block text-sm text-white line-clamp-2" title={item.ocrResult}>
-                                {item.ocrResult}
-                              </span>
-                              <span className="block mt-1 text-xs text-white/60">{t('Click to view full text')}</span>
-                            </>
-                          ) : (
-                            <>
-                              <Text size="xs" className="block mb-1" c="chatbox-tertiary">
-                                {t('OCR Text')} ({item.ocrResult.length} {t('characters')})
-                              </Text>
-                              <Text size="sm" className="line-clamp-2" c="chatbox-secondary" title={item.ocrResult}>
-                                {item.ocrResult}
-                              </Text>
-                              <Text size="xs" className="mt-1 inline-block" c="blue">
-                                {t('Click to view full text')}
-                              </Text>
-                            </>
-                          )}
-                        </div>
+              {displayContentParts.map((item, index) => {
+                if ('type' in item && item.type === 'agent_step') {
+                  return (
+                    <AgentStepGroupUI
+                      key={`agent-step-${msg.id}-${index}`}
+                      toolCallCount={countToolCallsInParts(item.workParts)}
+                      reasoningCount={countReasoningInParts(item.workParts)}
+                      hasWorkParts={item.workParts.length > 0}
+                      isComplete={item.isComplete}
+                      workContent={item.workParts.map((work: GroupedContentPart, workIndex: number) =>
+                        renderGroupedPart(work, `work-${msg.id}-${index}-${workIndex}`)
                       )}
-                    </div>
+                      resultContent={null}
+                    />
                   )
-                ) : item.type === 'tool-call' ? (
-                  <ToolCallPartUI key={item.toolCallId} part={item as MessageToolCallPart} />
-                ) : null
-              )}
+                }
+                return renderGroupedPart(item as GroupedContentPart, `${msg.id}-${index}`)
+              })}
             </div>
           )}
         </Box>

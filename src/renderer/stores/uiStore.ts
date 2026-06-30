@@ -39,8 +39,9 @@ export const uiStore = createStore(
           }[]
           onSave?: () => void
         } | null,
-        widthFull: false, // Stored UI preference
+        widthFull: true,
         sidebarWidth: null as number | null, // Custom sidebar width, null means use default
+        workspacePanelWidth: null as number | null, // Custom workspace panel width, null means use default
         sidebarMode: 'chat' as 'chat' | 'task',
       },
       (set, get) => ({
@@ -175,6 +176,10 @@ export const uiStore = createStore(
           set({ sidebarWidth })
         },
 
+        setWorkspacePanelWidth: (workspacePanelWidth: number | null) => {
+          set({ workspacePanelWidth })
+        },
+
         setSidebarMode: (sidebarMode: 'chat' | 'task') => {
           set({ sidebarMode })
         },
@@ -182,10 +187,14 @@ export const uiStore = createStore(
     ),
     {
       name: 'ui-store',
-      version: 0,
+      version: 1,
+      migrate: (persistedState) => {
+        const state = persistedState as Record<string, unknown>
+        return { ...state, widthFull: true }
+      },
       partialize: (state) => ({
-        widthFull: state.widthFull,
         sidebarWidth: state.sidebarWidth,
+        workspacePanelWidth: state.workspacePanelWidth,
         sessionWebBrowsingMap: state.sessionWebBrowsingMap,
       }),
       storage: safeStorage,
