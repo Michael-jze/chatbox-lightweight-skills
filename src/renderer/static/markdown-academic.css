@@ -1,0 +1,92 @@
+/* Academic typography (STIX2 + Latin Modern Mono) for light-theme assistant messages.
+   Base size follows --chatbox-msg-font-size from global Chat Settings. */
+
+@font-face {
+  font-family: 'STIX2Text';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('./fonts/academic/STIX2Text-Regular.woff') format('woff');
+}
+
+@font-face {
+  font-family: 'STIX2Text';
+  font-style: italic;
+  font-weight: 400;
+  font-display: swap;
+  src: url('./fonts/academic/STIX2Text-Italic.woff') format('woff');
+}
+
+@font-face {
+  font-family: 'STIX2Text';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url('./fonts/academic/STIX2Text-Bold.woff') format('woff');
+}
+
+@font-face {
+  font-family: 'STIX2Text';
+  font-style: italic;
+  font-weight: 700;
+  font-display: swap;
+  src: url('./fonts/academic/STIX2Text-BoldItalic.woff') format('woff');
+}
+
+@font-face {
+  font-family: 'Latin Modern Mono Light';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('./fonts/academic/lmmonolt10-regular-webfont.woff') format('woff');
+}
+
+@font-face {
+  font-family: 'Latin Modern Mono Light';
+  font-style: italic;
+  font-weight: 400;
+  font-display: swap;
+  src: url('./fonts/academic/lmmonolt10-oblique-webfont.woff') format('woff');
+}
+
+@font-face {
+  font-family: 'Latin Modern Mono Light';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url('./fonts/academic/lmmonolt10-bold-webfont.woff') format('woff');
+}
+
+@font-face {
+  font-family: 'Latin Modern Mono Light';
+  font-style: italic;
+  font-weight: 700;
+  font-display: swap;
+  src: url('./fonts/academic/lmmonolt10-boldoblique-webfont.woff') format('woff');
+}
+
+html[data-theme='light'] .assistant-msg .msg-content {
+  font-family: 'STIX2Text', 'Times New Roman', serif;
+  font-size: var(--chatbox-msg-font-size, 14px);
+  line-height: 1.5;
+}
+
+html[data-theme='light'] .assistant-msg .msg-content h1,
+html[data-theme='light'] .assistant-msg .msg-content h2,
+html[data-theme='light'] .assistant-msg .msg-content h3,
+html[data-theme='light'] .assistant-msg .msg-content h4,
+html[data-theme='light'] .assistant-msg .msg-content h5,
+html[data-theme='light'] .assistant-msg .msg-content h6,
+html[data-theme='light'] .assistant-msg .msg-content table {
+  font-family: inherit;
+}
+
+html[data-theme='light'] .assistant-msg .msg-content pre,
+html[data-theme='light'] .assistant-msg .msg-content code,
+html[data-theme='light'] .assistant-msg .msg-content .shiki-code-wrapper,
+html[data-theme='light'] .assistant-msg .msg-content .shiki-code-wrapper pre,
+html[data-theme='light'] .assistant-msg .msg-content .shiki-code-wrapper code,
+html[data-theme='light'] .assistant-msg .msg-content .shiki-code-wrapper .line,
+html[data-theme='light'] .assistant-msg .msg-content .shiki-code-wrapper span {
+  font-family: 'Latin Modern Mono Light', 'Latin Modern Mono', monospace !important;
+}
