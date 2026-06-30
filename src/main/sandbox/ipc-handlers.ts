@@ -2,6 +2,7 @@ import { ipcMain } from 'electron'
 import { getLogger } from '../util'
 import {
   checkAvailability,
+  diagnoseSandbox,
   editFile,
   execCommand,
   findFiles,
@@ -145,6 +146,25 @@ export function registerSandboxIPCHandlers() {
       return { available: false, reason: msg }
     }
   })
+
+  ipcMain.handle(
+    'sandbox:diagnose',
+    async (
+      _event,
+      params?: { workingDirectory?: string; pythonInterpreter?: string; runInitTest?: boolean }
+    ) => {
+      try {
+        return await diagnoseSandbox(params)
+      } catch (error: unknown) {
+        const msg = error instanceof Error ? error.message : String(error)
+        log.error('sandbox:diagnose failed', msg)
+        return {
+          timestamp: new Date().toISOString(),
+          error: msg,
+        }
+      }
+    }
+  )
 
   log.info('Sandbox IPC handlers registered')
 }

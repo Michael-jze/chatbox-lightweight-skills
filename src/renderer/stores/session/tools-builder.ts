@@ -52,7 +52,7 @@ export function generateSkillsXml(skills: SkillInfo[], toolUseSupported = false)
     .join('\n')
 
   const toolHint = toolUseSupported
-    ? "\nWhen a task matches a skill's description, use load_skill to load its full instructions before proceeding. For workspace files: prefer workspace_write / workspace_read (or sandbox_write / sandbox_read when available) for any multi-line or long content. Use sandbox_ls and sandbox_bash for shell operations. Use run_ai_bin for AI_Envirionment BINS commands (ai_bin_*). Do NOT pass large file bodies in run_skill_script arguments.\n"
+    ? "\nWhen a task matches a skill's description, use load_skill to load its full instructions before proceeding. For workspace files: use workspace_ls to list directories; use workspace_write / workspace_read (or sandbox_write / sandbox_read when sandbox is available) for file content. Use sandbox_bash for shell when sandbox tools are registered. Use run_ai_bin for AI_Envirionment BINS commands (ai_bin_*). Do NOT pass large file bodies in run_skill_script arguments.\n"
     : '\n'
 
   return `
@@ -92,6 +92,9 @@ export async function buildToolsForSession(
     if (workspaceDir?.trim()) {
       instructions += `\n${buildTaskSystemPrompt(workspaceDir.trim())}\n`
     }
+  } else if (skillRuntime && skillWorkspace) {
+    instructions +=
+      '\nSandbox shell tools (sandbox_bash, sandbox_ls, etc.) are not available in this session. Use workspace_ls to list directories and workspace_read / workspace_write for file I/O.\n'
   }
 
   let tools: ToolSet = {}
@@ -244,6 +247,24 @@ export async function buildToolsForSession(
                 maxLines: input.max_lines,
               })
               return { content: result.content, total_lines: result.totalLines }
+            },
+          })
+
+          tools.workspace_ls = tool({
+            description:
+              'List files and folders in the session workspace. Works without sandbox. Path is relative to the workspace root (use "." for root).',
+            inputSchema: z.object({
+              relative_path: z
+                .string()
+                .optional()
+                .describe('Directory relative to workspace root, e.g. "." or "notes" (default: ".")'),
+            }),
+            execute: async (input: { relative_path?: string }) => {
+              const workspaceDir = await ensureSessionSkillWorkspace(skillWorkspace)
+              return skillsController.listWorkspaceDirRelative({
+                workspaceRoot: workspaceDir,
+                relativePath: input.relative_path ?? '.',
+              })
             },
           })
         }

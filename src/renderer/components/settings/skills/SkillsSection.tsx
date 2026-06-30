@@ -23,6 +23,7 @@ import { skillsController } from '@/packages/skills/controller'
 import { settingsStore, useSettingsStore } from '@/stores/settingsStore'
 import { useShallow } from 'zustand/react/shallow'
 import { GlobalMemorySection } from './GlobalMemorySection'
+import { SandboxDebugSection } from './SandboxDebugSection'
 
 function parseListInput(value: string): string[] {
   return value
@@ -305,6 +306,8 @@ export const SkillsSection: FC = () => {
           {t('Browse')}
         </Button>
       </Flex>
+
+      <SandboxDebugSection />
 
       <Flex gap="xs" align="flex-end" mb="xl">
         <TextInput

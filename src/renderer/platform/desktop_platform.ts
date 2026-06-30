@@ -381,6 +381,14 @@ export default class DesktopPlatform implements Platform {
     return this.ipc.invoke('sandbox:check-availability')
   }
 
+  public async sandboxDiagnose(params?: {
+    workingDirectory?: string
+    pythonInterpreter?: string
+    runInitTest?: boolean
+  }) {
+    return this.ipc.invoke('sandbox:diagnose', params)
+  }
+
   public async openDirectoryDialog() {
     return this.ipc.invoke('dialog:openDirectory')
   }

@@ -55,6 +55,35 @@ export function listWorkspaceDirectory(workspaceRoot: string, dirPath: string): 
   return result
 }
 
+export function resolveRelativeWorkspaceDir(workspaceRoot: string, relativePath = '.'): string {
+  const rel = relativePath.trim() || '.'
+  if (rel === '.' || rel === './') {
+    return path.resolve(workspaceRoot)
+  }
+  if (path.isAbsolute(rel) || rel.includes('..')) {
+    throw new Error('Path must be relative to the workspace and must not contain ..')
+  }
+  return resolvePathWithinWorkspace(workspaceRoot, path.join(workspaceRoot, rel))
+}
+
+export function listWorkspaceDirectoryRelative(
+  workspaceRoot: string,
+  relativePath = '.'
+): { relativePath: string; entries: Array<{ name: string; type: 'file' | 'directory'; relative_path: string }> } {
+  const safeDir = resolveRelativeWorkspaceDir(workspaceRoot, relativePath)
+  const listed = listWorkspaceDirectory(workspaceRoot, safeDir)
+  const relBase = relativePath.trim() || '.'
+  const prefix = relBase === '.' ? '' : `${relBase.replace(/\/$/, '')}/`
+  return {
+    relativePath: relBase,
+    entries: listed.map((entry) => ({
+      name: entry.name,
+      type: entry.type,
+      relative_path: `${prefix}${entry.name}`,
+    })),
+  }
+}
+
 export function resolveRelativeWorkspaceFile(workspaceRoot: string, relativePath: string): string {
   const rel = relativePath.trim()
   if (!rel) {

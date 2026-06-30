@@ -16,7 +16,7 @@ import {
 import { parseSkillFile } from './parser'
 import { cleanupExpiredSandboxes, cleanupSessionSandbox, ensureSessionSandbox, resolveWorkspaceDir } from './runtime'
 import { runSkillScript } from './runner'
-import { listWorkspaceDirectory, readWorkspaceFile, resolvePathWithinWorkspace, writeWorkspaceFile } from './workspace-tree'
+import { listWorkspaceDirectory, listWorkspaceDirectoryRelative, readWorkspaceFile, resolvePathWithinWorkspace, writeWorkspaceFile } from './workspace-tree'
 import { startWorkspaceWatch, stopWorkspaceWatch } from './workspace-watcher'
 import { resolveAiEnvRootAbsolute, resolveExtraSkillRoots, type SkillDiscoveryOptions } from './skill-roots'
 import { isValidSkillName } from './validation'
@@ -294,6 +294,24 @@ export function registerSkillsHandlers() {
         return listWorkspaceDirectory(params.workspaceRoot, params.dirPath)
       } catch (error) {
         log.error('skills:list-workspace-dir failed', error)
+        throw error
+      }
+    }
+  )
+
+  ipcMain.handle(
+    'skills:list-workspace-relative',
+    async (
+      _event,
+      params: {
+        workspaceRoot: string
+        relativePath?: string
+      }
+    ) => {
+      try {
+        return listWorkspaceDirectoryRelative(params.workspaceRoot, params.relativePath ?? '.')
+      } catch (error) {
+        log.error('skills:list-workspace-relative failed', error)
         throw error
       }
     }

@@ -135,6 +135,11 @@ export interface Platform extends Storage {
   sandboxReset?(): Promise<{ success: boolean; error?: string }>
   sandboxStatus?(): Promise<{ state: string; workingDirectory?: string | null; platform?: string }>
   sandboxCheckAvailability?(): Promise<{ available: boolean; reason?: string }>
+  sandboxDiagnose?(params?: {
+    workingDirectory?: string
+    pythonInterpreter?: string
+    runInitTest?: boolean
+  }): Promise<Record<string, unknown>>
 
   // Directory dialog (Desktop only)
   openDirectoryDialog?(): Promise<{ canceled: boolean; path?: string }>

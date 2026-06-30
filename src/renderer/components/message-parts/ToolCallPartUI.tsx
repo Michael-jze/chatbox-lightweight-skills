@@ -437,7 +437,14 @@ const ParseLinkUI: FC<{ part: MessageToolCallPart }> = ({ part }) => {
 
 // ─── Skill Tools (run_ai_bin / run_skill_script / load_skill) ───────
 
-const SKILL_TOOL_NAMES = new Set(['run_ai_bin', 'run_skill_script', 'load_skill', 'workspace_write', 'workspace_read'])
+const SKILL_TOOL_NAMES = new Set([
+  'run_ai_bin',
+  'run_skill_script',
+  'load_skill',
+  'workspace_write',
+  'workspace_read',
+  'workspace_ls',
+])
 
 function formatSkillToolSummary(part: MessageToolCallPart): string {
   const args = part.args as Record<string, unknown> | undefined
@@ -452,6 +459,9 @@ function formatSkillToolSummary(part: MessageToolCallPart): string {
   }
   if (part.toolName === 'workspace_read') {
     return String(args?.relative_path ?? 'file')
+  }
+  if (part.toolName === 'workspace_ls') {
+    return String(args?.relative_path ?? '.')
   }
   if (part.toolName === 'load_skill') {
     return String(args?.name ?? 'skill')

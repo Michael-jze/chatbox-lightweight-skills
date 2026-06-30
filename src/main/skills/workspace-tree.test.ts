@@ -2,7 +2,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
-import { readWorkspaceFile, writeWorkspaceFile } from './workspace-tree'
+import { listWorkspaceDirectoryRelative, readWorkspaceFile, writeWorkspaceFile } from './workspace-tree'
 
 describe('workspace file io', () => {
   const tmpDirs: string[] = []
@@ -30,5 +30,16 @@ describe('workspace file io', () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ws-tree-'))
     tmpDirs.push(root)
     expect(() => writeWorkspaceFile(root, '../escape.txt', 'x')).toThrow()
+  })
+
+  it('lists workspace directories by relative path', () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ws-tree-'))
+    tmpDirs.push(root)
+    fs.mkdirSync(path.join(root, 'notes'))
+    fs.writeFileSync(path.join(root, 'readme.md'), 'hi')
+
+    const listed = listWorkspaceDirectoryRelative(root, '.')
+    expect(listed.entries.map((e) => e.name).sort()).toEqual(['notes', 'readme.md'])
+    expect(listed.entries.find((e) => e.name === 'notes')?.relative_path).toBe('notes')
   })
 })

@@ -9,9 +9,12 @@ Scripts run in the **session workspace** (`SKILL_SANDBOX_DIR`). Use paths **rela
 
 ## Preferred tools (multi-line / long content)
 
-Use **`workspace_write`** / **`workspace_read`** (or **`sandbox_write`** / **`sandbox_read`** when sandbox is available).
+Use **`workspace_ls`** to list directories, **`workspace_write`** / **`workspace_read`** for file content.
+
+When sandbox tools are available, you may also use **`sandbox_ls`** / **`sandbox_bash`**.
 
 ```text
+workspace_ls relative_path=.
 workspace_write relative_path=notes.md content="# Title\n\nBody..."
 workspace_read relative_path=notes.md
 ```

@@ -6,6 +6,13 @@ asarUnpack:
   - "**/node_modules/libsql/**"
   - "dist/main/builtin/**"
   - "**/node_modules/@anthropic-ai/sandbox-runtime/**"
+  # sandbox-runtime is unpacked for executable vendor binaries; its ESM deps must be
+  # unpacked too or dynamic import from the unpacked entry fails to resolve them.
+  - "**/node_modules/lodash-es/**"
+  - "**/node_modules/shell-quote/**"
+  - "**/node_modules/zod/**"
+  - "**/node_modules/commander/**"
+  - "**/node_modules/@pondwader/**"
 files:
   - "dist"
   # - "!dist/**/*.map"

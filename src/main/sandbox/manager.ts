@@ -355,6 +355,135 @@ export function getStatus(): SandboxStatus {
   }
 }
 
+export interface SandboxDiagnostics {
+  timestamp: string
+  environment: {
+    isPackaged: boolean
+    platform: string
+    resourcesPath: string
+    nodeVersion: string
+  }
+  runtimeModule: {
+    importTarget: string
+    importTargetExists: boolean
+    importSuccess: boolean
+    importError?: string
+    hasSandboxManager: boolean
+    dependencyPaths?: Record<string, { unpacked: boolean }>
+  }
+  availability: { available: boolean; reason?: string }
+  currentStatus: SandboxStatus
+  initTest?: {
+    workingDirectory: string
+    success: boolean
+    error?: string
+  }
+  execTest?: {
+    command: string
+    stdout: string
+    stderr: string
+    exitCode: number
+  }
+}
+
+const SANDBOX_RUNTIME_DEPS = [
+  'lodash-es',
+  'shell-quote',
+  'zod',
+  'commander',
+  '@pondwader/socks5-server',
+] as const
+
+function getPackagedDependencyPaths(): Record<string, { unpacked: boolean }> {
+  const unpackedRoot = path.join(process.resourcesPath, 'app.asar.unpacked', 'node_modules')
+  const result: Record<string, { unpacked: boolean }> = {}
+
+  for (const dep of SANDBOX_RUNTIME_DEPS) {
+    const segments = dep.split('/')
+    result[dep] = {
+      unpacked: existsSync(path.join(unpackedRoot, ...segments, 'package.json')),
+    }
+  }
+
+  return result
+}
+
+async function probeSandboxRuntimeModule(): Promise<SandboxDiagnostics['runtimeModule']> {
+  const importTarget = getSandboxRuntimeImportTarget()
+  const importTargetExists =
+    importTarget.startsWith('file:') ? existsSync(new URL(importTarget)) : true
+  const dependencyPaths = app.isPackaged ? getPackagedDependencyPaths() : undefined
+
+  try {
+    const mod = await import(importTarget)
+    return {
+      importTarget,
+      importTargetExists,
+      importSuccess: true,
+      hasSandboxManager: typeof mod.SandboxManager?.initialize === 'function',
+      dependencyPaths,
+    }
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error)
+    return {
+      importTarget,
+      importTargetExists,
+      importSuccess: false,
+      importError: msg,
+      hasSandboxManager: false,
+      dependencyPaths,
+    }
+  }
+}
+
+export async function diagnoseSandbox(options?: {
+  workingDirectory?: string
+  pythonInterpreter?: string
+  runInitTest?: boolean
+}): Promise<SandboxDiagnostics> {
+  const availability = await checkAvailability()
+  const runtimeModule = await probeSandboxRuntimeModule()
+
+  const result: SandboxDiagnostics = {
+    timestamp: new Date().toISOString(),
+    environment: {
+      isPackaged: app.isPackaged,
+      platform: process.platform,
+      resourcesPath: process.resourcesPath,
+      nodeVersion: process.version,
+    },
+    runtimeModule,
+    availability,
+    currentStatus: getStatus(),
+  }
+
+  if (!options?.runInitTest || !options.workingDirectory?.trim()) {
+    return result
+  }
+
+  const initResult = await initSandbox(options.workingDirectory.trim(), {
+    pythonInterpreter: options.pythonInterpreter,
+  })
+  result.initTest = {
+    workingDirectory: options.workingDirectory.trim(),
+    success: initResult.success,
+    error: initResult.error,
+  }
+  result.currentStatus = getStatus()
+
+  if (initResult.success) {
+    const execResult = await execCommand('echo SANDBOX_OK && pwd && ls -la')
+    result.execTest = {
+      command: 'echo SANDBOX_OK && pwd && ls -la',
+      stdout: execResult.stdout,
+      stderr: execResult.stderr,
+      exitCode: execResult.exitCode,
+    }
+  }
+
+  return result
+}
+
 export async function checkAvailability(): Promise<{ available: boolean; reason?: string }> {
   if (process.platform === 'darwin' || process.platform === 'linux') {
     return { available: true }

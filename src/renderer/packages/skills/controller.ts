@@ -92,6 +92,16 @@ export const skillsController = {
     return window.electronAPI.invoke('skills:list-workspace-dir', params)
   },
 
+  listWorkspaceDirRelative(params: {
+    workspaceRoot: string
+    relativePath?: string
+  }): Promise<{
+    relativePath: string
+    entries: Array<{ name: string; type: 'file' | 'directory'; relative_path: string }>
+  }> {
+    return window.electronAPI.invoke('skills:list-workspace-relative', params)
+  },
+
   revealWorkspacePath(targetPath: string, workspaceRoot: string): Promise<{ success: boolean }> {
     return window.electronAPI.invoke('skills:reveal-workspace-path', { workspaceRoot, targetPath })
   },
