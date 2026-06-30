@@ -11,6 +11,11 @@ import {
   TASK_SANDBOX_EXTRA_WRITE_PATHS,
 } from '../../shared/task-sandbox'
 import { getLogger } from '../util'
+import {
+  buildSandboxProcessEnv,
+  clearSandboxShellBin,
+  ensureSandboxShellBin,
+} from './shell-env'
 import { headTruncate, tailTruncate } from './truncate'
 
 const log = getLogger('sandbox:manager')
@@ -107,7 +112,10 @@ function getSandboxRuntimeImportTarget(): string {
   return '@anthropic-ai/sandbox-runtime'
 }
 
-export async function initSandbox(workDir: string): Promise<{ success: boolean; error?: string }> {
+export async function initSandbox(
+  workDir: string,
+  options: { pythonInterpreter?: string } = {}
+): Promise<{ success: boolean; error?: string }> {
   if (state === 'initialized') {
     log.info('Sandbox already initialized, resetting first')
     await resetSandbox()
@@ -121,6 +129,7 @@ export async function initSandbox(workDir: string): Promise<{ success: boolean; 
     log.info(`Initializing sandbox for workDir=${workDir}, platform=${process.platform}`)
     await SandboxManager.initialize(config)
 
+    ensureSandboxShellBin(workDir, { pythonInterpreter: options.pythonInterpreter })
     workingDirectory = workDir
     state = 'initialized'
     log.info('Sandbox initialized successfully')
@@ -149,6 +158,7 @@ export async function execCommand(command: string, options?: ExecOptions): Promi
     const child = spawn(wrappedCommand, {
       shell: true,
       cwd,
+      env: buildSandboxProcessEnv(),
       stdio: ['ignore', 'pipe', 'pipe'],
       detached: true,
     })
@@ -323,12 +333,14 @@ export async function resetSandbox(): Promise<{ success: boolean; error?: string
     state = 'idle'
     workingDirectory = null
     sandboxManagerRef = null
+    clearSandboxShellBin()
     log.info('Sandbox reset')
     return { success: true }
   } catch (error) {
     state = 'idle'
     workingDirectory = null
     sandboxManagerRef = null
+    clearSandboxShellBin()
     const msg = error instanceof Error ? error.message : String(error)
     log.error('Sandbox reset error:', msg)
     return { success: false, error: msg }

@@ -160,7 +160,11 @@ async function generateTaskResponse(taskId: string, targetMsg: Message, contextM
     const dependencies = await createModelDependencies()
     const model = await createModel(sessionSettings, dependencies)
     if (session?.workingDirectory && platform.sandboxInit) {
-      const initResult = await platform.sandboxInit({ workingDirectory: session.workingDirectory })
+      const skillSettings = settingsStore.getState().skills
+      const initResult = await platform.sandboxInit({
+        workingDirectory: session.workingDirectory,
+        pythonInterpreter: skillSettings.pythonInterpreter,
+      })
       if (!initResult.success) {
         throw new Error(`Sandbox initialization failed: ${initResult.error || 'Unknown error'}`)
       }

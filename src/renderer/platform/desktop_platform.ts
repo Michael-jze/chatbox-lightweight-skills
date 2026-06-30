@@ -333,7 +333,7 @@ export default class DesktopPlatform implements Platform {
     return this._sessionMetaStorage
   }
 
-  public async sandboxInit(config: { workingDirectory: string }) {
+  public async sandboxInit(config: { workingDirectory: string; pythonInterpreter?: string }) {
     return this.ipc.invoke('sandbox:init', config)
   }
 

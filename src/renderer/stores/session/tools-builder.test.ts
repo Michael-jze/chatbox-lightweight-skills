@@ -57,6 +57,7 @@ describe('generateSkillsXml', () => {
   it('should include run_ai_bin hint when tool use is supported', () => {
     const xml = generateSkillsXml([makeSkill('test', 'Test skill')], true)
     expect(xml).toContain('run_ai_bin')
+    expect(xml).toContain('sandbox_bash')
   })
 })
 
@@ -105,6 +106,44 @@ describe('buildToolsForSession lightweight skills', () => {
     expect(result.tools).not.toHaveProperty('query_knowledge_base')
     expect(result.tools).not.toHaveProperty('query_session_attachment')
     expect(Object.keys(result.tools).filter((name) => name.startsWith('mcp__'))).toHaveLength(0)
+  })
+
+  it('should include sandbox tools when sandboxEnabled is true', async () => {
+    const result = await buildToolsForSession(makeModel(true), {
+      webBrowsing: false,
+      messages: [],
+      sandboxEnabled: true,
+      workspaceDir: '/tmp/test-workspace',
+      sessionId: 'session-1',
+      skillRuntime: {
+        enabledSkillNames: [],
+        allowSkillNames: [],
+        denySkillNames: [],
+        allowScriptNames: [],
+        denyScriptNames: [],
+        allowBinNames: [],
+        denyBinNames: [],
+        pythonInterpreter: 'python3',
+        nodeInterpreter: 'node',
+        envFilePath: '',
+        aiEnvRoot: '~/AI_Envirionment',
+        aiEnvSkillsEnabled: true,
+        envShPath: '',
+        revisionAuthor: 'Chatbox',
+        toolLogEnabled: true,
+        toolResultPreviewChars: 8192,
+        timeoutMs: 120_000,
+        maxOutputBytes: 1024 * 1024,
+      },
+      skillWorkspace: { id: 'session-1' },
+    })
+
+    expect(result.tools).toHaveProperty('sandbox_bash')
+    expect(result.tools).toHaveProperty('sandbox_ls')
+    expect(result.tools).toHaveProperty('sandbox_read')
+    expect(result.tools).toHaveProperty('sandbox_write')
+    expect(result.instructions).toContain('sandbox_bash')
+    expect(result.instructions).toContain('/tmp/test-workspace')
   })
 })
 

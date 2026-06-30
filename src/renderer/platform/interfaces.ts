@@ -106,7 +106,10 @@ export interface Platform extends Storage {
   getSessionMetaStorage(): SessionMetaStorage
 
   // Sandbox operations (Desktop only)
-  sandboxInit?(config: { workingDirectory: string }): Promise<{ success: boolean; error?: string }>
+  sandboxInit?(config: {
+    workingDirectory: string
+    pythonInterpreter?: string
+  }): Promise<{ success: boolean; error?: string }>
   sandboxExec?(params: {
     command: string
     timeout?: number

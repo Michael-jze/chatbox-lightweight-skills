@@ -9,6 +9,7 @@ import { createModel, createModelDependencies } from '@/adapters'
 import { getLogger } from '@/lib/utils'
 import * as appleAppStore from '@/packages/apple_app_store'
 import { convertToModelMessages, injectModelSystemPrompt } from '@/packages/model-calls/message-utils'
+import { ensureSessionSkillWorkspace } from '@/packages/skills/session-workspace'
 import { estimateTokensFromMessages } from '@/packages/token'
 import platform from '@/platform'
 import storage from '@/storage'
@@ -32,6 +33,42 @@ import {
 } from './utils'
 
 const log = getLogger('session-orchestration')
+
+async function killSandboxOnCancel(): Promise<void> {
+  try {
+    await platform.sandboxKill?.()
+  } catch (err) {
+    log.debug('sandbox kill during cancellation:', err)
+  }
+}
+
+async function prepareWorkspaceSandbox(
+  session: {
+    id: string
+    skillWorkspaceDir?: string
+  },
+  pythonInterpreter: string
+): Promise<{ sandboxEnabled: boolean; workspaceDir?: string }> {
+  if (!featureFlags.workspaceSandbox || !platform.sandboxInit || !platform.sandboxExec) {
+    return { sandboxEnabled: false, workspaceDir: session.skillWorkspaceDir }
+  }
+
+  try {
+    const workspaceDir = await ensureSessionSkillWorkspace(session)
+    const initResult = await platform.sandboxInit({
+      workingDirectory: workspaceDir,
+      pythonInterpreter,
+    })
+    if (!initResult.success) {
+      log.warn('Sandbox init failed:', initResult.error)
+      return { sandboxEnabled: false, workspaceDir }
+    }
+    return { sandboxEnabled: true, workspaceDir }
+  } catch (err) {
+    log.error('Failed to prepare workspace sandbox:', err)
+    return { sandboxEnabled: false, workspaceDir: session.skillWorkspaceDir }
+  }
+}
 
 export async function orchestrateGeneration(
   sessionId: string,
@@ -117,12 +154,27 @@ export async function orchestrateGeneration(
     })
     promptMsgs = updatedMsgs
 
+    let sandboxEnabled = false
+    let resolvedWorkspaceDir = session.skillWorkspaceDir
+    if (skillRuntime) {
+      const sandboxPrep = await prepareWorkspaceSandbox(
+        { id: sessionId, skillWorkspaceDir: session.skillWorkspaceDir },
+        globalSkillSettings.pythonInterpreter
+      )
+      sandboxEnabled = sandboxPrep.sandboxEnabled
+      resolvedWorkspaceDir = sandboxPrep.workspaceDir
+    }
+
     const { tools, instructions } = await buildToolsForSession(model, {
       webBrowsing,
       messages: promptMsgs,
       sessionId,
+      sandboxEnabled,
       skillRuntime,
-      skillWorkspace: skillRuntime ? { id: sessionId, skillWorkspaceDir: session.skillWorkspaceDir } : undefined,
+      skillWorkspace: skillRuntime
+        ? { id: sessionId, skillWorkspaceDir: resolvedWorkspaceDir }
+        : undefined,
+      workspaceDir: sandboxEnabled ? resolvedWorkspaceDir : undefined,
     })
 
     let injectedMessages = injectModelSystemPrompt(
@@ -145,7 +197,10 @@ export async function orchestrateGeneration(
 
     targetMsg = {
       ...targetMsg,
-      cancel: () => controller.abort(),
+      cancel: () => {
+        controller.abort()
+        void killSandboxOnCancel()
+      },
     }
     updateStreamingCache(sessionId, targetMsg)
 
@@ -241,6 +296,7 @@ export async function orchestrateGeneration(
     appleAppStore.tickAfterMessageGenerated()
   } catch (err: unknown) {
     if (controller.signal.aborted) {
+      await killSandboxOnCancel()
       targetMsg = {
         ...targetMsg,
         generating: false,
@@ -253,5 +309,9 @@ export async function orchestrateGeneration(
 
     targetMsg = handleGenerationError(err, targetMsg, settings)
     await persistStreamingMessage(sessionId, targetMsg, { refreshCounting: true })
+  } finally {
+    if (controller.signal.aborted) {
+      await killSandboxOnCancel()
+    }
   }
 }

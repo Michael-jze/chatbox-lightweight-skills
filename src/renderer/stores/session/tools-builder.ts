@@ -12,6 +12,7 @@ import { formatGlobalMemoryInstructions, loadGlobalMemoryForPrompt } from '@/pac
 import { runAiBinForSession, runSkillScriptForSession } from '@/packages/skills/session-workspace'
 import { PROVIDERS_WITH_PARSE_LINK } from '@/packages/web-search'
 import * as settingActions from '@/stores/settingActions'
+import { buildTaskSystemPrompt } from '@/stores/taskSystemPrompt'
 
 export interface SkillWorkspaceRef {
   id: string
@@ -28,6 +29,7 @@ export interface BuildToolsOptions {
     globalMemoryPath?: string
   }
   skillWorkspace?: SkillWorkspaceRef
+  workspaceDir?: string
 }
 
 export interface BuildToolsResult {
@@ -50,7 +52,7 @@ export function generateSkillsXml(skills: SkillInfo[], toolUseSupported = false)
     .join('\n')
 
   const toolHint = toolUseSupported
-    ? "\nWhen a task matches a skill's description, use load_skill to load its full instructions before proceeding. Use run_ai_bin for AI_Envirionment BINS commands (ai_bin_*). Use run_skill_script only for built-in workspace-files scripts.\n"
+    ? "\nWhen a task matches a skill's description, use load_skill to load its full instructions before proceeding. Use sandbox_ls, sandbox_bash, sandbox_read, and sandbox_write for workspace file operations (list, mkdir, mv, cp, shell commands). Use run_ai_bin for AI_Envirionment BINS commands (ai_bin_*). Use run_skill_script only for built-in workspace-files scripts or documented skill scripts.\n"
     : '\n'
 
   return `
@@ -67,7 +69,7 @@ export async function buildToolsForSession(
   model: ModelInterface,
   options: BuildToolsOptions
 ): Promise<BuildToolsResult> {
-  const { webBrowsing, messages, sandboxEnabled, sessionId, skillRuntime, skillWorkspace } = options
+  const { webBrowsing, messages, sandboxEnabled, sessionId, skillRuntime, skillWorkspace, workspaceDir } = options
 
   const hasInlineFileOrLink = messages.some(
     (m) => m.links?.length || m.files?.some((file) => file.ragMode !== 'session-retrieval')
@@ -87,6 +89,9 @@ export async function buildToolsForSession(
   if (sandboxEnabled) {
     const { default: sandboxToolSet } = await import('@/packages/model-calls/toolsets/sandbox')
     instructions += sandboxToolSet.description
+    if (workspaceDir?.trim()) {
+      instructions += `\n${buildTaskSystemPrompt(workspaceDir.trim())}\n`
+    }
   }
 
   let tools: ToolSet = {}

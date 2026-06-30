@@ -18,10 +18,14 @@ import {
 const log = getLogger('sandbox:ipc-handlers')
 
 export function registerSandboxIPCHandlers() {
-  ipcMain.handle('sandbox:init', async (_event, params: { workingDirectory: string }) => {
+  ipcMain.handle(
+    'sandbox:init',
+    async (_event, params: { workingDirectory: string; pythonInterpreter?: string }) => {
     try {
       log.info(`sandbox:init workDir=${params.workingDirectory}`)
-      return await initSandbox(params.workingDirectory)
+      return await initSandbox(params.workingDirectory, {
+        pythonInterpreter: params.pythonInterpreter,
+      })
     } catch (error: unknown) {
       const msg = error instanceof Error ? error.message : String(error)
       log.error('sandbox:init failed', msg)
