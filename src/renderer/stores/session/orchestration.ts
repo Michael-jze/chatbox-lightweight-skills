@@ -10,6 +10,7 @@ import { getLogger } from '@/lib/utils'
 import * as appleAppStore from '@/packages/apple_app_store'
 import { convertToModelMessages, injectModelSystemPrompt } from '@/packages/model-calls/message-utils'
 import { ensureSessionSkillWorkspace } from '@/packages/skills/session-workspace'
+import { toastError } from '@/packages/toast'
 import { estimateTokensFromMessages } from '@/packages/token'
 import platform from '@/platform'
 import storage from '@/storage'
@@ -61,6 +62,7 @@ async function prepareWorkspaceSandbox(
     })
     if (!initResult.success) {
       log.warn('Sandbox init failed:', initResult.error)
+      toastError(`工作区 Sandbox 初始化失败：${initResult.error ?? 'unknown error'}`)
       return { sandboxEnabled: false, workspaceDir }
     }
     return { sandboxEnabled: true, workspaceDir }
@@ -156,13 +158,13 @@ export async function orchestrateGeneration(
 
     let sandboxEnabled = false
     let resolvedWorkspaceDir = session.skillWorkspaceDir
-    if (skillRuntime) {
+    if (featureFlags.workspaceSandbox) {
       const sandboxPrep = await prepareWorkspaceSandbox(
         { id: sessionId, skillWorkspaceDir: session.skillWorkspaceDir },
         globalSkillSettings.pythonInterpreter
       )
       sandboxEnabled = sandboxPrep.sandboxEnabled
-      resolvedWorkspaceDir = sandboxPrep.workspaceDir
+      resolvedWorkspaceDir = sandboxPrep.workspaceDir ?? resolvedWorkspaceDir
     }
 
     const { tools, instructions } = await buildToolsForSession(model, {

@@ -4,6 +4,8 @@ asar: true
 asarUnpack:
   - "**\\*.{node,dll}"
   - "**/node_modules/libsql/**"
+  - "dist/main/builtin/**"
+  - "**/node_modules/@anthropic-ai/sandbox-runtime/**"
 files:
   - "dist"
   # - "!dist/**/*.map"
@@ -80,6 +82,10 @@ directories:
 
 extraResources:
   - ./assets/**
+  - from: release/app/dist/main/builtin
+    to: builtin-skills
+    filter:
+      - "**/*"
 
 publish:
   - provider: s3

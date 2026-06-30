@@ -1,5 +1,6 @@
 import fs from 'fs'
 import path from 'path'
+import { resolveAsarUnpackedPath } from '../util/asar'
 
 /** Candidate directories containing shipped built-in skills. */
 export function getBuiltinSkillsRoots(): string[] {
@@ -12,19 +13,26 @@ export function getBuiltinSkillsRoots(): string[] {
     appPath = undefined
   }
 
+  const unpackedBuiltin = process.resourcesPath
+    ? path.join(process.resourcesPath, 'app.asar.unpacked', 'dist', 'main', 'builtin')
+    : null
+
   const candidates = [
+    ...(unpackedBuiltin ? [unpackedBuiltin] : []),
     path.join(__dirname, 'builtin'),
-    ...(appPath
-      ? [
-          path.join(appPath, 'dist', 'main', 'builtin'),
-          path.join(appPath, 'src', 'main', 'skills', 'builtin'),
-          path.join(appPath, 'builtin-skills'),
-        ]
-      : []),
     ...(process.resourcesPath
       ? [
           path.join(process.resourcesPath, 'builtin-skills'),
+          path.join(process.resourcesPath, 'app.asar.unpacked', 'dist', 'main', 'builtin'),
           path.join(process.resourcesPath, 'app.asar', 'dist', 'main', 'builtin'),
+        ]
+      : []),
+    ...(appPath
+      ? [
+          path.join(appPath, 'dist', 'main', 'builtin'),
+          path.join(resolveAsarUnpackedPath(appPath), 'dist', 'main', 'builtin'),
+          path.join(appPath, 'src', 'main', 'skills', 'builtin'),
+          path.join(appPath, 'builtin-skills'),
         ]
       : []),
     path.resolve(process.cwd(), 'src/main/skills/builtin'),

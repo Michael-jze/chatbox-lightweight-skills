@@ -5,6 +5,7 @@ import { spawn } from 'child_process'
 import fs from 'fs'
 import path from 'path'
 import { getLogger } from '../util'
+import { resolveAsarUnpackedPath, resolveExecutablePath } from '../util/asar'
 import { ensureSessionSandbox } from './runtime'
 import { resolveSkillRoot } from './discovery'
 import { spillAndCompactSkillResult } from './tool-result-spill'
@@ -129,8 +130,16 @@ export async function runSkillScript(
   }
 
   const resolvedSkillRoot = fs.realpathSync(skillRoot)
-  const resolvedScriptPath = fs.realpathSync(scriptPath)
-  if (!resolvedScriptPath.startsWith(`${resolvedSkillRoot}${path.sep}`)) {
+  const skillRootCandidates = [
+    resolvedSkillRoot,
+    resolveAsarUnpackedPath(resolvedSkillRoot),
+  ].filter((root, index, list) => list.indexOf(root) === index)
+
+  const resolvedScriptPath = resolveExecutablePath(fs.realpathSync(scriptPath))
+  const inSkillDir = skillRootCandidates.some(
+    (root) => resolvedScriptPath === root || resolvedScriptPath.startsWith(`${root}${path.sep}`)
+  )
+  if (!inSkillDir) {
     return spill({ success: false, stderr: 'Script path escapes skill directory' })
   }
 

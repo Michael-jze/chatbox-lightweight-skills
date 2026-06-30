@@ -1,16 +1,37 @@
-import { app } from 'electron'
 import fs from 'fs'
 import path from 'path'
-import { resolveSkillWorkspaceDir } from '@shared/skills/workspace'
+import {
+  CHATBOX_SKILLS_FOLDER,
+  formatSkillWorkspaceTimestamp,
+  resolveSkillWorkspaceDir,
+} from '@shared/skills/workspace'
+import { app } from 'electron'
 import { getLogger } from '../util'
 
 const log = getLogger('skills:runtime')
 
-const SANDBOX_ROOT = 'chatbox-skills'
 const SESSION_TTL_MS = 24 * 60 * 60 * 1000
 
 function getDefaultSandboxRoot(): string {
-  return path.join(app.getPath('temp'), SANDBOX_ROOT)
+  return path.join(app.getPath('temp'), CHATBOX_SKILLS_FOLDER)
+}
+
+function allocateUniqueWorkspaceDir(sessionId: string, parent: string): string {
+  const base = formatSkillWorkspaceTimestamp()
+  let folder = base
+  let suffix = 2
+  for (;;) {
+    const candidate = resolveSkillWorkspaceDir({
+      sessionId,
+      sandboxParentDir: parent,
+      workspaceFolderName: folder,
+    })
+    if (!fs.existsSync(candidate)) {
+      return candidate
+    }
+    folder = `${base}_${suffix}`
+    suffix += 1
+  }
 }
 
 export function resolveWorkspaceDir(params: {
@@ -21,23 +42,20 @@ export function resolveWorkspaceDir(params: {
   if (params.workspaceDir?.trim()) {
     return params.workspaceDir.trim()
   }
-  return resolveSkillWorkspaceDir({
-    sessionId: params.sessionId,
-    sandboxParentDir: params.sandboxParentDir,
-    defaultTempRoot: app.getPath('temp'),
-  })
+  const parent = params.sandboxParentDir?.trim() || app.getPath('temp')
+  return allocateUniqueWorkspaceDir(params.sessionId, parent)
 }
 
-export function getSessionSandboxDir(sessionId: string, workspaceDir?: string): string {
-  if (workspaceDir?.trim()) {
-    return workspaceDir.trim()
+export function getSessionSandboxDir(workspaceDir: string): string {
+  const dir = workspaceDir?.trim()
+  if (!dir) {
+    throw new Error('workspaceDir is required')
   }
-  const safeSessionId = sessionId.replace(/[^a-zA-Z0-9_-]/g, '_')
-  return path.join(getDefaultSandboxRoot(), safeSessionId)
+  return dir
 }
 
-export function ensureSessionSandbox(sessionId: string, workspaceDir?: string): string {
-  const dir = getSessionSandboxDir(sessionId, workspaceDir)
+export function ensureSessionSandbox(_sessionId: string, workspaceDir: string): string {
+  const dir = getSessionSandboxDir(workspaceDir)
   if (!fs.existsSync(dir)) {
     fs.mkdirSync(dir, { recursive: true })
     log.info(`Created session sandbox: ${dir}`)
@@ -45,8 +63,11 @@ export function ensureSessionSandbox(sessionId: string, workspaceDir?: string): 
   return dir
 }
 
-export function cleanupSessionSandbox(sessionId: string, workspaceDir?: string): void {
-  const dir = getSessionSandboxDir(sessionId, workspaceDir)
+export function cleanupSessionSandbox(_sessionId: string, workspaceDir?: string): void {
+  if (!workspaceDir?.trim()) {
+    return
+  }
+  const dir = workspaceDir.trim()
   if (fs.existsSync(dir)) {
     fs.rmSync(dir, { recursive: true, force: true })
     log.info(`Removed session sandbox: ${dir}`)

@@ -295,7 +295,7 @@ export const SkillsSection: FC = () => {
           style={{ flex: 1 }}
           label={t('Global workspace parent directory')}
           description={t(
-            'Default parent for per-conversation temp folders ({parent}/chatbox-skills/{sessionId}). Empty uses system temp.'
+            'Default parent for per-conversation temp folders ({parent}/chatbox-skills/{YYYYMMDD_HHmmss}). Empty uses system temp.'
           )}
           value={skillSettings.sandboxParentDir}
           onChange={(e) => updateSkillSettings({ sandboxParentDir: e.currentTarget.value })}
