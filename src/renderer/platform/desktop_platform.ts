@@ -301,15 +301,15 @@ export default class DesktopPlatform implements Platform {
   }
 
   public async installUpdate() {
-    return this.ipc.invoke('install-update')
+    return Promise.resolve()
   }
 
   public async switchTheme(theme: 'dark' | 'light') {
     return this.ipc.invoke('switch-theme', theme)
   }
 
-  public async testMineruConnection(_apiToken: string): Promise<{ success: boolean; error?: string }> {
-    return { success: false, error: 'MinerU connection test is not available in this build' }
+  public async testMineruConnection(apiToken: string): Promise<{ success: boolean; error?: string }> {
+    return this.ipc.invoke('parser:test-mineru', apiToken)
   }
 
   public getImageGenerationStorage(): ImageGenerationStorage {

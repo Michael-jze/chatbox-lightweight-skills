@@ -1,4 +1,3 @@
-import * as defaults from '@shared/defaults'
 import { createMessage, type Message, type Session, type SessionThread } from '@shared/types'
 import { getMessageText } from '@shared/utils/message'
 import { v4 as uuidv4 } from 'uuid'
@@ -112,7 +111,7 @@ export async function refreshContextAndCreateNewThread(sessionId: string) {
   await chatStore.updateSessionWithMessages(session.id, {
     ...session,
     threads: session.threads ? [...session.threads, newThread] : [newThread],
-    messages: systemPrompt ? [systemPrompt] : [createMessage('system', defaults.getDefaultPrompt())],
+    messages: systemPrompt ? [systemPrompt] : [],
     threadName: '',
   })
 }

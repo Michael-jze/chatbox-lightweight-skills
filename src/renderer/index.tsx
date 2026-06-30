@@ -48,7 +48,6 @@ import { initOnboardingStore } from './stores/onboardingStore'
 import { initLoginLicenseStateReconciliation } from './stores/premiumActions'
 import { initRecentDirectoriesStore } from './stores/recentDirectoriesStore'
 import { initSettingsStore } from './stores/settingsStore'
-import { initUpdateListeners } from './stores/updateStore'
 
 // 开发环境下引入错误测试工具
 // if (process.env.NODE_ENV === 'development') {
@@ -152,12 +151,6 @@ initializeApp()
 
     i18n.changeLanguage(settings.language)
     initLoginLicenseStateReconciliation()
-
-    // Initialize auto-updater event listeners (desktop only, idempotent)
-    if (platform.type === 'desktop') {
-      initUpdateListeners()
-    }
-    // Cleanup is intentionally not captured — listeners persist for the app lifetime
 
     // 初始化完成，可以开始渲染
     ReactDOM.createRoot(document.getElementById('root') as HTMLElement).render(

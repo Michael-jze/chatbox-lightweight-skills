@@ -8,17 +8,14 @@ import { IconCheck, IconChevronDown, IconChevronUp, IconCopy, IconLanguage, Icon
 import type React from 'react'
 import { useCallback, useEffect, useState } from 'react'
 import { Trans, useTranslation } from 'react-i18next'
-import { trackJkClickEvent } from '@/analytics/jk'
-import { JK_EVENTS, JK_PAGE_NAMES } from '@/analytics/jk-events'
 import { ChatboxAIErrorMessage } from '@/components/common/ChatboxAIErrorMessage'
 import { useCopied } from '@/hooks/useCopied'
 import { navigateToSettings } from '@/modals/Settings'
 import { trackingEvent } from '@/packages/event'
 import { buildChatboxUrl } from '@/packages/remote'
 import { translateTexts } from '@/packages/translation'
-import platform from '@/platform'
 import * as settingActions from '@/stores/settingActions'
-import { useLanguage, useSettingsStore } from '@/stores/settingsStore'
+import { useLanguage } from '@/stores/settingsStore'
 import LinkTargetBlank from '../common/Link'
 
 const MAX_CHARS = 200
@@ -146,7 +143,6 @@ export default function MessageErrTips(props: { msg: Message; onRetry?: () => vo
   const { msg, onRetry, isBubbleLayout } = props
   const { t } = useTranslation()
   const [expanded, setExpanded] = useState(false)
-  const licenseKey = useSettingsStore((state) => state.licenseKey)
   const language = useLanguage()
   const [translatedText, setTranslatedText] = useState<string | null>(null)
   const [isTranslating, setIsTranslating] = useState(false)
@@ -420,39 +416,6 @@ export default function MessageErrTips(props: { msg: Message; onRetry?: () => vo
             </div>
           )}
         </>
-      )}
-      {/* Free trial suggestion for users without license (skip for ChatboxAI errors) */}
-      {!licenseKey && msg.aiProvider !== ModelProviderEnum.ChatboxAI && (
-        <div className="mt-3 pt-3 border-t border-red-200 dark:border-red-800/30 text-right">
-          <Tooltip
-            label={t(
-              'If you have never had a license before, you can claim it after logging in on the official website.'
-            )}
-            withArrow
-            multiline
-            maw={240}
-            position="bottom-end"
-            styles={{
-              tooltip: {
-                backgroundColor: 'rgba(0, 0, 0, 0.75)',
-                backdropFilter: 'blur(4px)',
-              },
-            }}
-          >
-            <span
-              className="text-sm font-medium text-blue-600 cursor-pointer hover:text-blue-700 hover:underline transition-colors"
-              onClick={() => {
-                trackJkClickEvent(JK_EVENTS.FREE_LICENSE_CLAIM_CLICK, {
-                  pageName: JK_PAGE_NAMES.CHAT_PAGE,
-                  content: 'chat_error',
-                })
-                platform.openLink('https://chatboxai.app/login')
-              }}
-            >
-              {t('Chatbox AI free trial available')} →
-            </span>
-          </Tooltip>
-        </div>
       )}
     </div>
   )

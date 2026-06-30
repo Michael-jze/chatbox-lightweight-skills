@@ -23,13 +23,13 @@ import path from 'path'
 import * as sourceMapSupport from 'source-map-support'
 import type { ShortcutSetting } from 'src/shared/types'
 import * as analystic from './analystic-node'
-import { AppUpdater } from './app-updater'
 import * as autoLauncher from './autoLauncher'
 import { handleDeepLink } from './deeplinks'
 import { parseFile } from './file-parser'
 import Locale from './locales'
 import MenuBuilder from './menu'
 import { registerOAuthHandlers } from './oauth'
+import { registerParserHandlers } from './parser/ipc-handlers'
 import * as proxy from './proxy'
 import { registerSandboxHandlers } from './sandbox'
 import { registerSkillsHandlers } from './skills'
@@ -495,9 +495,6 @@ if (!gotTheLock) {
     .then(async () => {
       await createWindow()
       ensureTray()
-      // Remove this if your app does not use auto updates
-      // eslint-disable-next-line
-      new AppUpdater(() => mainWindow)
 
       // 处理启动时的 Deep Link (Windows/Linux)
       // macOS 会通过 open-url 事件处理，不需要在这里处理
@@ -828,4 +825,5 @@ ipcMain.handle('window:is-maximized', () => {
 
 registerSandboxHandlers()
 registerSkillsHandlers()
+registerParserHandlers()
 registerOAuthHandlers()

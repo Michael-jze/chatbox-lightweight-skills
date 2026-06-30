@@ -7,19 +7,32 @@ export const deepseekProvider = defineProvider({
   name: 'DeepSeek',
   type: ModelProviderType.OpenAI,
   modelsDevProviderId: 'deepseek',
-  curatedModelIds: ['deepseek-chat', 'deepseek-reasoner'],
+  curatedModelIds: ['deepseek-v4-flash', 'deepseek-v4-pro', 'deepseek-chat', 'deepseek-reasoner'],
   urls: {
     website: 'https://www.deepseek.com/',
   },
   defaultSettings: {
+    apiHost: 'https://api.deepseek.com',
     models: [
       {
+        modelId: 'deepseek-v4-flash',
+        contextWindow: 128_000,
+        capabilities: ['tool_use'],
+      },
+      {
+        modelId: 'deepseek-v4-pro',
+        contextWindow: 128_000,
+        capabilities: ['tool_use', 'reasoning'],
+      },
+      {
         modelId: 'deepseek-chat',
+        nickname: 'Deprecated 2026/07/24',
         contextWindow: 128_000,
         capabilities: ['tool_use'],
       },
       {
         modelId: 'deepseek-reasoner',
+        nickname: 'Deprecated 2026/07/24',
         contextWindow: 128_000,
         capabilities: ['reasoning', 'tool_use'],
       },
@@ -29,6 +42,7 @@ export const deepseekProvider = defineProvider({
     return new DeepSeek(
       {
         apiKey: config.effectiveApiKey,
+        apiHost: config.formattedApiHost || 'https://api.deepseek.com',
         model: config.model,
         temperature: config.settings.temperature,
         topP: config.settings.topP,

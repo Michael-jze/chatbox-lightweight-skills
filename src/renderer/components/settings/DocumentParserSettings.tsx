@@ -42,6 +42,7 @@ export function DocumentParserSettings({ showTitle = true }: DocumentParserSetti
 
   const [testingConnection, setTestingConnection] = useState(false)
   const [connectionResult, setConnectionResult] = useState<boolean | undefined>()
+  const [connectionError, setConnectionError] = useState<string | undefined>()
 
   const parserOptions = useMemo(() => {
     const isDesktop = platform.type === 'desktop'
@@ -67,6 +68,7 @@ export function DocumentParserSettings({ showTitle = true }: DocumentParserSetti
         },
       })
       setConnectionResult(undefined)
+      setConnectionError(undefined)
     },
     [setSettings, extension, documentParser]
   )
@@ -74,6 +76,7 @@ export function DocumentParserSettings({ showTitle = true }: DocumentParserSetti
   const handleMineruTokenChange = useCallback(
     (value: string) => {
       setConnectionResult(undefined)
+      setConnectionError(undefined)
       setSettings({
         extension: {
           ...extension,
@@ -93,12 +96,17 @@ export function DocumentParserSettings({ showTitle = true }: DocumentParserSetti
 
     setTestingConnection(true)
     setConnectionResult(undefined)
+    setConnectionError(undefined)
 
     try {
       const result = await platform.testMineruConnection?.(mineruToken)
       setConnectionResult(result?.success ?? false)
-    } catch {
+      if (!result?.success) {
+        setConnectionError(result?.error)
+      }
+    } catch (error) {
       setConnectionResult(false)
+      setConnectionError(error instanceof Error ? error.message : String(error))
     } finally {
       setTestingConnection(false)
     }
@@ -153,7 +161,7 @@ export function DocumentParserSettings({ showTitle = true }: DocumentParserSetti
               </Text>
             ) : (
               <Text size="xs" c="chatbox-error">
-                {t('API key invalid!')}
+                {connectionError || t('API key invalid!')}
               </Text>
             )
           ) : null}

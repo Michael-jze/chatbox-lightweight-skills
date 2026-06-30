@@ -8,6 +8,7 @@ import type { ModelDependencies } from '../../../types/adapters'
 
 interface Options {
   apiKey: string
+  apiHost?: string
   model: ProviderModelInfo
   temperature?: number
   topP?: number
@@ -28,6 +29,7 @@ export default class DeepSeek extends AbstractAISDKModel {
   protected getProvider() {
     return createDeepSeek({
       apiKey: this.options.apiKey,
+      baseURL: this.options.apiHost || 'https://api.deepseek.com',
     })
   }
 

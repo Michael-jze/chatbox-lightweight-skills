@@ -83,9 +83,9 @@ export function settings(): Settings {
     fontSize: 14,
     spellCheck: true,
 
-    defaultPrompt: getDefaultPrompt(),
+    defaultPrompt: '',
 
-    allowReportingAndTracking: true,
+    allowReportingAndTracking: false,
 
     hasExpiredLicense: false,
     chatboxAIDesktopPromptDismissed: false,
@@ -104,7 +104,7 @@ export function settings(): Settings {
     compactionThreshold: 0.6,
 
     autoLaunch: false,
-    autoUpdate: true,
+    autoUpdate: false,
     betaUpdate: false,
 
     shortcuts: {

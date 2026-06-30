@@ -10,6 +10,7 @@ import { BingNewsSearch } from './bing-news'
 import { BochaSearch } from './bocha'
 import { ChatboxSearch } from './chatbox-search'
 import { QueritSearch } from './querit'
+import { SerpApiSearch } from './serpapi'
 import { TavilySearch } from './tavily'
 
 const MAX_CONTEXT_ITEMS = 10
@@ -62,6 +63,12 @@ function getSearchProviders() {
           settings.webSearch.queritTimeRange
         )
       )
+      break
+    case 'serpapi':
+      if (!settings.webSearch.serpapiApiKey) {
+        throw ChatboxAIAPIError.fromCodeName('serpapi_api_key_required', 'serpapi_api_key_required')
+      }
+      selectedProviders.push(new SerpApiSearch(settings.webSearch.serpapiApiKey))
       break
     default:
       throw new Error(`Unsupported search provider: ${provider}`)

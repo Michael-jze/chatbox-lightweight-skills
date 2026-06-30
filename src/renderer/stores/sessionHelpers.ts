@@ -635,9 +635,6 @@ export function initEmptyChatSession(): Omit<Session, 'id'> {
         : lastUsedChatModel),
     },
   }
-  if (settings.defaultPrompt) {
-    newSession.messages.push(createMessage('system', settings.defaultPrompt || defaults.getDefaultPrompt()))
-  }
   return newSession
 }
 

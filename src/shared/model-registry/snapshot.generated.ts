@@ -2419,6 +2419,24 @@ export const MODELS_DEV_SNAPSHOT: ModelRegistryData = {
     },
   },
   deepseek: {
+    'deepseek-v4-flash': {
+      modelId: 'deepseek-v4-flash',
+      type: 'chat',
+      capabilities: ['tool_use'],
+      contextWindow: 128000,
+      maxOutput: 8192,
+      name: 'DeepSeek V4 Flash',
+      family: 'deepseek',
+    },
+    'deepseek-v4-pro': {
+      modelId: 'deepseek-v4-pro',
+      type: 'chat',
+      capabilities: ['tool_use', 'reasoning'],
+      contextWindow: 128000,
+      maxOutput: 64000,
+      name: 'DeepSeek V4 Pro',
+      family: 'deepseek',
+    },
     'deepseek-reasoner': {
       modelId: 'deepseek-reasoner',
       type: 'chat',
