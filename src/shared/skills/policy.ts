@@ -1,13 +1,22 @@
 import type { SkillRuntimeSettings } from '../types/skills'
+import { isValidAiBinName } from './ai-env'
 
 export interface SkillPolicyInput {
-  skillName: string
+  skillName?: string
   scriptName?: string
+  binName?: string
   settings: Pick<
     SkillRuntimeSettings,
-    'enabledSkillNames' | 'allowSkillNames' | 'denySkillNames' | 'allowScriptNames' | 'denyScriptNames'
+    | 'enabledSkillNames'
+    | 'allowSkillNames'
+    | 'denySkillNames'
+    | 'allowScriptNames'
+    | 'denyScriptNames'
+    | 'allowBinNames'
+    | 'denyBinNames'
   >
   isBuiltin?: boolean
+  disabled?: boolean
 }
 
 function matchesList(name: string, list: string[]): boolean {
@@ -20,7 +29,10 @@ function matchesList(name: string, list: string[]): boolean {
  * Built-in skills are always allowed unless denied.
  */
 export function isSkillAllowed(input: SkillPolicyInput): boolean {
-  const { skillName, settings, isBuiltin } = input
+  const { skillName, settings, isBuiltin, disabled } = input
+  if (!skillName) {
+    return false
+  }
   const { enabledSkillNames, allowSkillNames, denySkillNames } = settings
 
   if (matchesList(skillName, denySkillNames)) {
@@ -29,6 +41,10 @@ export function isSkillAllowed(input: SkillPolicyInput): boolean {
 
   if (isBuiltin) {
     return true
+  }
+
+  if (disabled && !enabledSkillNames.includes(skillName)) {
+    return false
   }
 
   if (!enabledSkillNames.includes(skillName)) {
@@ -59,7 +75,23 @@ export function isScriptAllowed(input: SkillPolicyInput): boolean {
   return true
 }
 
-export function filterEnabledSkills<T extends { name: string; isBuiltin?: boolean }>(
+export function isBinAllowed(input: SkillPolicyInput): boolean {
+  const { binName, settings } = input
+  if (!binName || !isValidAiBinName(binName)) {
+    return false
+  }
+  const { allowBinNames, denyBinNames, allowScriptNames, denyScriptNames } = settings
+  if (matchesList(binName, denyBinNames) || matchesList(binName, denyScriptNames)) {
+    return false
+  }
+  const allowList = allowBinNames.length > 0 ? allowBinNames : allowScriptNames
+  if (allowList.length > 0 && !matchesList(binName, allowList)) {
+    return false
+  }
+  return true
+}
+
+export function filterEnabledSkills<T extends { name: string; isBuiltin?: boolean; disabled?: boolean }>(
   skills: T[],
   settings: Pick<SkillRuntimeSettings, 'enabledSkillNames' | 'allowSkillNames' | 'denySkillNames'>
 ): T[] {
@@ -67,10 +99,13 @@ export function filterEnabledSkills<T extends { name: string; isBuiltin?: boolea
     isSkillAllowed({
       skillName: skill.name,
       isBuiltin: skill.isBuiltin,
+      disabled: skill.disabled,
       settings: {
         ...settings,
         allowScriptNames: [],
         denyScriptNames: [],
+        allowBinNames: [],
+        denyBinNames: [],
       },
     })
   )

@@ -1,61 +1,51 @@
 # Lightweight Skills
 
-This build removes MCP and RAG tool injection and replaces them with a local Skills runtime.
+This build removes MCP and RAG tool injection and replaces them with a local Skills runtime integrated with `~/AI_Envirionment/`.
 
 ## Discovery
 
 Skills are discovered from:
 
+- Built-in `workspace-files`
 - `userData/skills/**/SKILL.md`
+- `{aiEnvRoot}/SKILLS/**/SKILL.md` when AI Environment mount is enabled (default `~/AI_Envirionment`)
 - Optional extra roots: `.agents/skills`, `.cursor/skills`, `~/.agents/skills`, `~/.cursor/skills`
 
-Each skill folder contains a `SKILL.md` file with YAML frontmatter (`name`, `description`).
+Each skill folder contains a `SKILL.md` file with YAML frontmatter (`name`, `description`). Optional `disable: true` excludes a skill from auto-enable.
 
 ## Progressive disclosure
 
-1. `buildToolsForSession()` injects `<available_skills>` metadata for enabled skills.
-2. Models with tool use receive `load_skill` to fetch the full markdown body on demand.
-3. `run_skill_script` executes scripts from a skill's `scripts/` directory.
+1. `buildToolsForSession()` injects `<available_skills>` metadata for enabled skills plus `<ai_environment>` tool hints.
+2. Models with tool use receive `load_skill` to fetch the full markdown body on demand (with `$AI_ENV_ROOT` and WorkBuddy placeholders expanded).
+3. `run_ai_bin` executes `AI_Envirionment/BINS/ai_bin_*` launchers (they source `env.sh` internally).
+4. `run_skill_script` executes scripts from a skill's `scripts/` directory (built-in workspace-files).
 
 ## Security model
 
-This is intentionally lightweight:
-
-- **Allow/deny lists** in Settings → Skills for skill names and script names.
-- **Session sandbox directory** — one stable folder per conversation at `{parent}/chatbox-skills/<sessionId>` (or a user-picked path). Parent defaults to system temp; configurable in Settings → Skills. Unchanged when starting a new topic in the same conversation.
-- **Interpreter control**: `.py` runs via configured Python path; `.js/.mjs/.cjs` via Node path.
-- **Independent env**: JSON file at `envFilePath` merged into the child process environment.
-- No shell execution (`shell: false`).
-
-Scripts outside `.py` / `.js` / `.mjs` / `.cjs` are rejected.
+- **Allow/deny lists** in Settings → Skills for skill names, script names, and ai_bin names.
+- **Session sandbox directory** — one stable folder per conversation.
+- **ai_bin whitelist** — only `ai_bin_*` files under `{aiEnvRoot}/BINS/`.
+- No arbitrary shell execution (`shell: false`, bash invokes known launcher path only).
 
 ## Settings schema
 
 `settings.skills` stores:
 
-- `enabledSkillNames`
-- `allowSkillNames`, `denySkillNames`
-- `allowScriptNames`, `denyScriptNames`
-- `pythonInterpreter`, `nodeInterpreter`
-- `envFilePath` — path to a JSON file merged into script env
-- `sandboxParentDir` — default parent for per-session workspace folders
-- `globalMemoryEnabled`, `globalMemoryPath` — persistent identity/tone text file
+- `aiEnvRoot`, `aiEnvSkillsEnabled`, `envShPath`
+- `enabledSkillNames`, allow/deny lists for skills, scripts, bins
+- `revisionAuthor` (Word track changes, replaces WorkBuddy)
+- `pythonInterpreter`, `nodeInterpreter`, optional `envFilePath` (JSON, for run_skill_script only)
+- `sandboxParentDir`, `globalMemoryEnabled`, `globalMemoryPath`
+- `timeoutMs` (default 120s for paper tooling), `maxOutputBytes`
 
 ## IPC surface
 
-Main process handlers:
-
-- `skills:discover`
-- `skills:load`
-- `skills:run-script`
-- `skills:cleanup-session`
-- `skills:get-directory`
-- `skills:open-directory`
+- `skills:discover`, `skills:load`, `skills:run-script`, `skills:run-ai-bin`
+- `skills:resolve-ai-env-root`, `skills:ensure-workspace`, `skills:cleanup-session`
+- Global memory and directory helpers
 
 ## Removed capabilities
 
 - MCP server management and tool merge
 - Knowledge Base RAG toolset
 - Session Attachment RAG indexing and retrieval tools
-
-Attachments are always inlined or read through the file toolset.

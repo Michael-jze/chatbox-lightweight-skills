@@ -2,13 +2,14 @@ import type { ModelInterface } from '@shared/models/types'
 import type { Message } from '@shared/types'
 import type { SkillInfo, SkillRuntimeSettings } from '@shared/types/skills'
 import { filterEnabledSkills } from '@shared/skills/policy'
+import { formatAiEnvInstructions } from '@shared/skills/ai-env'
 import { type ToolSet, tool } from 'ai'
 import { z } from 'zod'
 import fileToolSet from '@/packages/model-calls/toolsets/file'
 import { getToolSetDescription, parseLinkTool, webSearchTool } from '@/packages/model-calls/toolsets/web-search'
 import { skillsController } from '@/packages/skills/controller'
 import { formatGlobalMemoryInstructions, loadGlobalMemoryForPrompt } from '@/packages/skills/global-memory'
-import { runSkillScriptForSession } from '@/packages/skills/session-workspace'
+import { runAiBinForSession, runSkillScriptForSession } from '@/packages/skills/session-workspace'
 import { PROVIDERS_WITH_PARSE_LINK } from '@/packages/web-search'
 import * as settingActions from '@/stores/settingActions'
 
@@ -49,7 +50,7 @@ export function generateSkillsXml(skills: SkillInfo[], toolUseSupported = false)
     .join('\n')
 
   const toolHint = toolUseSupported
-    ? "\nWhen a task matches a skill's description, use the load_skill tool to load its full instructions before proceeding. Use run_skill_script to execute scripts referenced by a loaded skill.\n"
+    ? "\nWhen a task matches a skill's description, use load_skill to load its full instructions before proceeding. Use run_ai_bin for AI_Envirionment BINS commands (ai_bin_*). Use run_skill_script only for built-in workspace-files scripts.\n"
     : '\n'
 
   return `
@@ -109,12 +110,22 @@ export async function buildToolsForSession(
   if (skillRuntime) {
     let allSkills: SkillInfo[] = []
     try {
-      allSkills = await skillsController.discoverSkills()
+      allSkills = await skillsController.discoverSkills({
+        aiEnvRoot: skillRuntime.aiEnvRoot,
+        aiEnvSkillsEnabled: skillRuntime.aiEnvSkillsEnabled,
+      })
     } catch (err) {
       console.error('Failed to discover skills:', err)
     }
 
     const enabledSkills = filterEnabledSkills(allSkills, skillRuntime)
+
+    let aiEnvRootAbsolute = skillRuntime.aiEnvRoot
+    try {
+      aiEnvRootAbsolute = await skillsController.resolveAiEnvRoot(skillRuntime.aiEnvRoot)
+    } catch {
+      // keep configured path
+    }
 
     const globalMemory = await loadGlobalMemoryForPrompt(
       skillRuntime.globalMemoryEnabled ?? true,
@@ -122,6 +133,10 @@ export async function buildToolsForSession(
     )
     if (globalMemory) {
       instructions += formatGlobalMemoryInstructions(globalMemory)
+    }
+
+    if (skillRuntime.aiEnvSkillsEnabled) {
+      instructions += formatAiEnvInstructions(aiEnvRootAbsolute, skillRuntime.revisionAuthor)
     }
 
     if (enabledSkills.length > 0) {
@@ -139,7 +154,10 @@ export async function buildToolsForSession(
             if (!skill) {
               return { error: `Skill "${input.name}" is not available or blocked by policy.` }
             }
-            const result = await skillsController.loadSkill(input.name)
+            const result = await skillsController.loadSkill(input.name, {
+              aiEnvRoot: skillRuntime.aiEnvRoot,
+              revisionAuthor: skillRuntime.revisionAuthor,
+            })
             if (!result) {
               return { error: `Skill "${input.name}" not found or could not be loaded.` }
             }
@@ -148,6 +166,22 @@ export async function buildToolsForSession(
         })
 
         if (sessionId && skillWorkspace) {
+          tools.run_ai_bin = tool({
+            description:
+              'Run an AI_Envirionment BINS launcher (ai_bin_*) with arguments. The launcher sources env.sh automatically. Use after load_skill when the skill documents ai_bin commands.',
+            inputSchema: z.object({
+              bin_name: z.string().describe('The ai_bin launcher name, e.g. ai_bin_valyu'),
+              arguments: z.array(z.string()).optional().describe('CLI arguments after the bin name'),
+            }),
+            execute: async (input: { bin_name: string; arguments?: string[] }) => {
+              return runAiBinForSession(skillWorkspace, {
+                binName: input.bin_name,
+                args: input.arguments,
+                runtime: skillRuntime,
+              })
+            },
+          })
+
           tools.run_skill_script = tool({
             description:
               "Execute a script from a skill's scripts directory using the configured Python or Node interpreter. Scripts run in the session sandbox directory.",

@@ -87,6 +87,9 @@ export function parseSkillFile(skillMdPath: string, directoryName?: string): Par
     if (Array.isArray(data.allowedTools)) {
       metadata.allowedTools = data.allowedTools.filter((t: unknown) => typeof t === 'string')
     }
+    if (data.disable === true || data.disabled === true) {
+      metadata.disabled = true
+    }
 
     const trimmedBody = body.trim()
     const bodyTokenEstimate = Math.ceil(trimmedBody.length / 4)

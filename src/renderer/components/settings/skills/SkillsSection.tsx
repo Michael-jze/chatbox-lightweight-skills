@@ -21,6 +21,7 @@ import { ScalableIcon } from '@/components/common/ScalableIcon'
 import platform from '@/platform'
 import { skillsController } from '@/packages/skills/controller'
 import { settingsStore, useSettingsStore } from '@/stores/settingsStore'
+import { useShallow } from 'zustand/react/shallow'
 import { GlobalMemorySection } from './GlobalMemorySection'
 
 function parseListInput(value: string): string[] {
@@ -30,8 +31,16 @@ function parseListInput(value: string): string[] {
     .filter(Boolean)
 }
 
-function formatListInput(values: string[]): string {
-  return values.join('\n')
+function formatListInput(values: string[] | undefined | null): string {
+  return (values ?? []).join('\n')
+}
+
+function isAiEnvSkill(skill: SkillInfo): boolean {
+  return skill.source?.type === 'ai-environment'
+}
+
+function isLocalUserSkill(skill: SkillInfo): boolean {
+  return !skill.isBuiltin && !isAiEnvSkill(skill)
 }
 
 const SkillCard: FC<{
@@ -42,13 +51,23 @@ const SkillCard: FC<{
   <Paper shadow="xs" radius="md" withBorder p="sm" style={{ opacity: enabled ? 1 : 0.72 }}>
     <Flex justify="space-between" align="flex-start" gap={8}>
       <Box style={{ minWidth: 0, flex: 1 }}>
-        <Flex align="center" gap={6} mb={4}>
+        <Flex align="center" gap={6} mb={4} wrap="wrap">
           <Text size="sm" fw={600} lineClamp={1}>
             {skill.name}
           </Text>
           {skill.isBuiltin && (
             <Badge size="xs" variant="outline" color="gray">
               built-in
+            </Badge>
+          )}
+          {isAiEnvSkill(skill) && (
+            <Badge size="xs" variant="outline" color="blue">
+              AI Environment
+            </Badge>
+          )}
+          {skill.disabled && (
+            <Badge size="xs" variant="outline" color="orange">
+              disabled
             </Badge>
           )}
         </Flex>
@@ -72,19 +91,49 @@ export const SkillsSection: FC = () => {
   const { t } = useTranslation()
   const [skills, setSkills] = useState<SkillInfo[]>([])
   const [loading, setLoading] = useState(false)
-  const skillSettings = useSettingsStore((state) => state.skills)
+  const skillSettings = useSettingsStore(
+    useShallow((state) => ({
+      ...state.skills,
+      allowBinNames: state.skills.allowBinNames ?? [],
+      denyBinNames: state.skills.denyBinNames ?? [],
+      aiEnvRoot: state.skills.aiEnvRoot ?? '~/AI_Envirionment',
+      aiEnvSkillsEnabled: state.skills.aiEnvSkillsEnabled ?? true,
+      envShPath: state.skills.envShPath ?? '',
+      revisionAuthor: state.skills.revisionAuthor ?? 'Chatbox',
+    }))
+  )
 
   const fetchSkills = useCallback(async () => {
     setLoading(true)
     try {
-      const discovered = await skillsController.discoverSkills()
+      const discovered = await skillsController.discoverSkills({
+        aiEnvRoot: skillSettings.aiEnvRoot,
+        aiEnvSkillsEnabled: skillSettings.aiEnvSkillsEnabled,
+      })
       setSkills(discovered)
+
+      const aiEnvSkills = discovered.filter((skill) => isAiEnvSkill(skill) && !skill.disabled)
+      const currentEnabled = settingsStore.getState().skills.enabledSkillNames ?? []
+      if (currentEnabled.length === 0 && aiEnvSkills.length > 0) {
+        const nextEnabled = aiEnvSkills.map((skill) => skill.name)
+        settingsStore.setState((state) => {
+          if (state.skills.enabledSkillNames.length > 0) {
+            return state
+          }
+          return {
+            skills: {
+              ...state.skills,
+              enabledSkillNames: nextEnabled,
+            },
+          }
+        })
+      }
     } catch (err) {
       console.error('Failed to discover skills:', err)
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [skillSettings.aiEnvRoot, skillSettings.aiEnvSkillsEnabled])
 
   useEffect(() => {
     void fetchSkills()
@@ -101,8 +150,10 @@ export const SkillsSection: FC = () => {
       [
         { key: 'allowSkillNames' as const, label: t('Allow Skills (one per line, empty = all enabled skills)') },
         { key: 'denySkillNames' as const, label: t('Deny Skills') },
-        { key: 'allowScriptNames' as const, label: t('Allow Scripts') },
-        { key: 'denyScriptNames' as const, label: t('Deny Scripts') },
+        { key: 'allowScriptNames' as const, label: t('Allow Scripts / Bins') },
+        { key: 'denyScriptNames' as const, label: t('Deny Scripts / Bins') },
+        { key: 'allowBinNames' as const, label: t('Allow ai_bin only (overrides Allow Scripts when set)') },
+        { key: 'denyBinNames' as const, label: t('Deny ai_bin') },
       ] as const,
     [t]
   )
@@ -117,6 +168,14 @@ export const SkillsSection: FC = () => {
       return { skills: { ...state.skills, enabledSkillNames: current.filter((n) => n !== name) } }
     })
   }, [])
+
+  const handleEnableAllAiEnvSkills = useCallback(() => {
+    const names = skills.filter((skill) => isAiEnvSkill(skill) && !skill.disabled).map((skill) => skill.name)
+    settingsStore.setState((state) => {
+      const merged = new Set([...state.skills.enabledSkillNames, ...names])
+      return { skills: { ...state.skills, enabledSkillNames: [...merged] } }
+    })
+  }, [skills])
 
   const handleOpenFolder = useCallback(async () => {
     try {
@@ -133,14 +192,41 @@ export const SkillsSection: FC = () => {
     updateSkillSettings({ sandboxParentDir: result.path })
   }, [updateSkillSettings])
 
+  const handleBrowseAiEnvRoot = useCallback(async () => {
+    if (!platform.openDirectoryDialog) return
+    const result = await platform.openDirectoryDialog()
+    if (result.canceled || !result.path) return
+    updateSkillSettings({ aiEnvRoot: result.path })
+  }, [updateSkillSettings])
+
   const handleBrowseEnvFile = useCallback(async () => {
     const result = await skillsController.openEnvFileDialog()
     if (result.canceled || !result.path) return
     updateSkillSettings({ envFilePath: result.path })
   }, [updateSkillSettings])
 
+  const handleBrowseEnvSh = useCallback(async () => {
+    const result = await skillsController.openEnvShDialog()
+    if (result.canceled || !result.path) return
+    updateSkillSettings({ envShPath: result.path })
+  }, [updateSkillSettings])
+
   const builtinSkills = skills.filter((skill) => skill.isBuiltin)
-  const userSkills = skills.filter((skill) => !skill.isBuiltin)
+  const aiEnvSkills = skills.filter((skill) => isAiEnvSkill(skill))
+  const localSkills = skills.filter((skill) => isLocalUserSkill(skill))
+
+  const renderSkillGrid = (items: SkillInfo[]) => (
+    <SimpleGrid type="container" cols={{ base: 1, '600px': 2, '1000px': 3 }}>
+      {items.map((skill) => (
+        <SkillCard
+          key={skill.path}
+          skill={skill}
+          enabled={skill.isBuiltin || skillSettings.enabledSkillNames.includes(skill.name)}
+          onToggle={handleUserToggle}
+        />
+      ))}
+    </SimpleGrid>
+  )
 
   return (
     <Box>
@@ -148,7 +234,7 @@ export const SkillsSection: FC = () => {
 
       <Flex justify="space-between" align="center" mb="md" wrap="wrap" gap="xs">
         <Text size="sm" c="chatbox-tertiary">
-          {t('Lightweight local Skills with progressive disclosure and sandboxed script execution.')}
+          {t('Lightweight local Skills with AI_Envirionment mount and sandboxed ai_bin execution.')}
         </Text>
         <Flex gap="xs">
           <Tooltip label={t('Open Skills Folder')} withArrow>
@@ -166,6 +252,42 @@ export const SkillsSection: FC = () => {
             {t('Refresh')}
           </Button>
         </Flex>
+      </Flex>
+
+      <Switch
+        mb="md"
+        label={t('Mount AI_Envirionment SKILLS')}
+        description={t('Discover skills from {aiEnvRoot}/SKILLS', { aiEnvRoot: skillSettings.aiEnvRoot })}
+        checked={skillSettings.aiEnvSkillsEnabled}
+        onChange={(e) => updateSkillSettings({ aiEnvSkillsEnabled: e.currentTarget.checked })}
+      />
+
+      <Flex gap="xs" align="flex-end" mb="xl">
+        <TextInput
+          style={{ flex: 1 }}
+          label={t('AI Environment root')}
+          description={t('Contains SKILLS/ and BINS/ (default ~/AI_Envirionment)')}
+          value={skillSettings.aiEnvRoot}
+          onChange={(e) => updateSkillSettings({ aiEnvRoot: e.currentTarget.value })}
+          placeholder="~/AI_Envirionment"
+        />
+        <Button variant="light" onClick={() => void handleBrowseAiEnvRoot()}>
+          {t('Browse')}
+        </Button>
+      </Flex>
+
+      <Flex gap="xs" align="flex-end" mb="xl">
+        <TextInput
+          style={{ flex: 1 }}
+          label={t('env.sh path (reference)')}
+          description={t('ai_bin launchers source this file automatically. Used for validation/display only.')}
+          value={skillSettings.envShPath}
+          onChange={(e) => updateSkillSettings({ envShPath: e.currentTarget.value })}
+          placeholder="~/AI_Envirionment/env.sh"
+        />
+        <Button variant="light" onClick={() => void handleBrowseEnvSh()}>
+          {t('Browse')}
+        </Button>
       </Flex>
 
       <Flex gap="xs" align="flex-end" mb="xl">
@@ -187,8 +309,8 @@ export const SkillsSection: FC = () => {
       <Flex gap="xs" align="flex-end" mb="xl">
         <TextInput
           style={{ flex: 1 }}
-          label={t('Script environment file (JSON)')}
-          description={t('Path to a JSON file whose key-value pairs are merged into each run_skill_script process.')}
+          label={t('Script environment file (JSON, optional)')}
+          description={t('Optional JSON env for run_skill_script only. ai_bin uses env.sh.')}
           value={skillSettings.envFilePath}
           onChange={(e) => updateSkillSettings({ envFilePath: e.currentTarget.value })}
           placeholder="/path/to/env.json"
@@ -211,12 +333,19 @@ export const SkillsSection: FC = () => {
           onChange={(e) => updateSkillSettings({ nodeInterpreter: e.currentTarget.value })}
           placeholder="node"
         />
+        <TextInput
+          label={t('Revision author')}
+          description={t('Default --author for Word track changes (replaces WorkBuddy)')}
+          value={skillSettings.revisionAuthor}
+          onChange={(e) => updateSkillSettings({ revisionAuthor: e.currentTarget.value })}
+          placeholder="Chatbox"
+        />
         <NumberInput
-          label={t('Script timeout (ms)')}
+          label={t('Command timeout (ms)')}
           value={skillSettings.timeoutMs}
           min={1000}
           max={300_000}
-          onChange={(value) => updateSkillSettings({ timeoutMs: Number(value) || 30_000 })}
+          onChange={(value) => updateSkillSettings({ timeoutMs: Number(value) || 120_000 })}
         />
         <NumberInput
           label={t('Max output bytes')}
@@ -249,45 +378,51 @@ export const SkillsSection: FC = () => {
               {builtinSkills.length}
             </Badge>
           </Flex>
-          <SimpleGrid type="container" cols={{ base: 1, '600px': 2, '1000px': 3 }} mb="xl">
-            {builtinSkills.map((skill) => (
-              <SkillCard
-                key={skill.path}
-                skill={skill}
-                enabled={true}
-                onToggle={handleUserToggle}
-              />
-            ))}
-          </SimpleGrid>
+          <Box mb="xl">{renderSkillGrid(builtinSkills)}</Box>
         </>
+      )}
+
+      <Flex justify="space-between" align="center" mb="sm" wrap="wrap" gap="xs">
+        <Text size="sm" fw={600}>
+          {t('AI Environment Skills')}
+        </Text>
+        <Flex gap="xs" align="center">
+          <Badge size="sm" variant="light">
+            {aiEnvSkills.length}
+          </Badge>
+          <Button variant="light" size="xs" onClick={handleEnableAllAiEnvSkills}>
+            {t('Enable all')}
+          </Button>
+        </Flex>
+      </Flex>
+
+      {aiEnvSkills.length === 0 ? (
+        <Paper radius="md" p="lg" withBorder className="border-dashed" mb="xl">
+          <Text size="sm" c="chatbox-tertiary">
+            {t('No skills found under AI_Envirionment/SKILLS. Check the root path above.')}
+          </Text>
+        </Paper>
+      ) : (
+        <Box mb="xl">{renderSkillGrid(aiEnvSkills)}</Box>
       )}
 
       <Flex justify="space-between" align="center" mb="sm">
         <Text size="sm" fw={600}>
-          {t('User Skills')}
+          {t('Local User Skills')}
         </Text>
         <Badge size="sm" variant="light">
-          {userSkills.length}
+          {localSkills.length}
         </Badge>
       </Flex>
 
-      {userSkills.length === 0 ? (
+      {localSkills.length === 0 ? (
         <Paper radius="md" p="lg" withBorder className="border-dashed">
           <Text size="sm" c="chatbox-tertiary">
             {t('Place SKILL.md folders under the skills directory or in .cursor/skills / .agents/skills.')}
           </Text>
         </Paper>
       ) : (
-        <SimpleGrid type="container" cols={{ base: 1, '600px': 2, '1000px': 3 }}>
-          {userSkills.map((skill) => (
-            <SkillCard
-              key={skill.path}
-              skill={skill}
-              enabled={skillSettings.enabledSkillNames.includes(skill.name)}
-              onToggle={handleUserToggle}
-            />
-          ))}
-        </SimpleGrid>
+        renderSkillGrid(localSkills)
       )}
     </Box>
   )

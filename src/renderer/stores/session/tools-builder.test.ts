@@ -25,7 +25,9 @@ vi.mock('@/packages/skills/controller', () => ({
     discoverSkills: vi.fn(async () => []),
     loadSkill: vi.fn(),
     runScript: vi.fn(),
+    runAiBin: vi.fn(),
     ensureWorkspace: vi.fn(),
+    resolveAiEnvRoot: vi.fn(async () => '/Users/me/AI_Envirionment'),
   },
 }))
 
@@ -52,9 +54,9 @@ describe('generateSkillsXml', () => {
     expect(xml).toContain('<description>Review code for bugs and improvements</description>')
   })
 
-  it('should include run_skill_script hint when tool use is supported', () => {
+  it('should include run_ai_bin hint when tool use is supported', () => {
     const xml = generateSkillsXml([makeSkill('test', 'Test skill')], true)
-    expect(xml).toContain('run_skill_script')
+    expect(xml).toContain('run_ai_bin')
   })
 })
 
@@ -83,10 +85,16 @@ describe('buildToolsForSession lightweight skills', () => {
         denySkillNames: [],
         allowScriptNames: [],
         denyScriptNames: [],
+        allowBinNames: [],
+        denyBinNames: [],
         pythonInterpreter: 'python3',
         nodeInterpreter: 'node',
         envFilePath: '',
-        timeoutMs: 30_000,
+        aiEnvRoot: '~/AI_Envirionment',
+        aiEnvSkillsEnabled: true,
+        envShPath: '',
+        revisionAuthor: 'Chatbox',
+        timeoutMs: 120_000,
         maxOutputBytes: 1024 * 1024,
       },
       skillWorkspace: { id: 'session-1' },

@@ -1,16 +1,30 @@
 import type { SkillInfo, SkillMetadata, SkillRuntimeSettings, SkillScriptResult } from '@shared/types/skills'
 
+export interface SkillDiscoveryOptions {
+  aiEnvRoot?: string
+  aiEnvSkillsEnabled?: boolean
+}
+
+export interface LoadSkillOptions {
+  aiEnvRoot?: string
+  revisionAuthor?: string
+}
+
 export const skillsController = {
-  discoverSkills(): Promise<SkillInfo[]> {
-    return window.electronAPI.invoke('skills:discover')
+  discoverSkills(options?: SkillDiscoveryOptions): Promise<SkillInfo[]> {
+    return window.electronAPI.invoke('skills:discover', options)
   },
 
-  loadSkill(name: string): Promise<{ metadata: SkillMetadata; body: string } | null> {
-    return window.electronAPI.invoke('skills:load', name)
+  loadSkill(name: string, options?: LoadSkillOptions): Promise<{ metadata: SkillMetadata; body: string } | null> {
+    return window.electronAPI.invoke('skills:load', { name, ...options })
   },
 
   getSkillsDirectory(): Promise<string> {
     return window.electronAPI.invoke('skills:get-directory')
+  },
+
+  resolveAiEnvRoot(aiEnvRoot?: string): Promise<string> {
+    return window.electronAPI.invoke('skills:resolve-ai-env-root', aiEnvRoot)
   },
 
   async openSkillsDirectory(): Promise<void> {
@@ -28,6 +42,16 @@ export const skillsController = {
     return window.electronAPI.invoke('skills:run-script', params)
   },
 
+  runAiBin(params: {
+    sessionId: string
+    workspaceDir: string
+    binName: string
+    args?: string[]
+    runtime: SkillRuntimeSettings
+  }): Promise<SkillScriptResult> {
+    return window.electronAPI.invoke('skills:run-ai-bin', params)
+  },
+
   ensureWorkspace(params: {
     sessionId: string
     skillWorkspaceDir?: string
@@ -42,6 +66,10 @@ export const skillsController = {
 
   openEnvFileDialog(): Promise<{ canceled: boolean; path?: string }> {
     return window.electronAPI.invoke('skills:open-env-file-dialog')
+  },
+
+  openEnvShDialog(): Promise<{ canceled: boolean; path?: string }> {
+    return window.electronAPI.invoke('skills:open-env-sh-dialog')
   },
 
   readGlobalMemory(customPath?: string): Promise<{ path: string; content: string }> {

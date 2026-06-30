@@ -64,7 +64,8 @@ function validateArgs(args: string[] | undefined): string[] | { error: string } 
 export async function runSkillScript(
   skillsDir: string,
   params: SkillRunScriptParams,
-  extraRoots: string[] = []
+  extraRoots: string[] = [],
+  options: { aiEnvSkillsRoot?: string } = {}
 ): Promise<SkillScriptResult> {
   const { sessionId, skillName, scriptName, runtime, workspaceDir } = params
 
@@ -84,7 +85,7 @@ export async function runSkillScript(
     return { success: false, stdout: '', stderr: 'Invalid script name', exitCode: null }
   }
 
-  const skillRoot = resolveSkillRoot(skillsDir, skillName, extraRoots)
+  const skillRoot = resolveSkillRoot(skillsDir, skillName, extraRoots, options)
   if (!skillRoot) {
     return { success: false, stdout: '', stderr: `Skill not found: ${skillName}`, exitCode: null }
   }

@@ -51,19 +51,32 @@ function walkForSkillFiles(root: string, results: string[] = []): string[] {
   return results
 }
 
-function skillSourceForRoot(root: string, skillsDir: string): SkillSource {
-  const normalizedRoot = path.normalize(root)
+function skillSourceForRoot(skillRoot: string, skillsDir: string, aiEnvSkillsRoot?: string): SkillSource {
+  const normalizedRoot = path.normalize(skillRoot)
   const normalizedUser = path.normalize(skillsDir)
+  if (aiEnvSkillsRoot) {
+    const normalizedAiEnv = path.normalize(aiEnvSkillsRoot)
+    if (
+      normalizedRoot === normalizedAiEnv ||
+      normalizedRoot.startsWith(`${normalizedAiEnv}${path.sep}`)
+    ) {
+      return { type: 'ai-environment', skillPath: skillRoot }
+    }
+  }
   if (normalizedRoot === normalizedUser || normalizedRoot.startsWith(`${normalizedUser}${path.sep}`)) {
     return { type: 'local' }
   }
-  return { type: 'local', skillPath: root }
+  return { type: 'local', skillPath: skillRoot }
 }
 
 /**
  * Discover skills by recursively walking skill roots for SKILL.md files.
  */
-export function discoverSkills(skillsDir: string, extraRoots: string[] = []): SkillInfo[] {
+export function discoverSkills(
+  skillsDir: string,
+  extraRoots: string[] = [],
+  options: { aiEnvSkillsRoot?: string } = {}
+): SkillInfo[] {
   ensureDir(skillsDir)
 
   const builtinRoots = getBuiltinSkillsRoots()
@@ -95,7 +108,7 @@ export function discoverSkills(skillsDir: string, extraRoots: string[] = []): Sk
       bodyTokenEstimate,
       source: isBuiltin
         ? { type: 'builtin' as const, skillPath: skillRoot }
-        : skillSourceForRoot(skillRoot, skillsDir),
+        : skillSourceForRoot(skillRoot, skillsDir, options.aiEnvSkillsRoot),
     })
   }
 
@@ -113,8 +126,13 @@ export function discoverSkills(skillsDir: string, extraRoots: string[] = []): Sk
   return deduplicatedSkills
 }
 
-export function resolveSkillRoot(skillsDir: string, skillName: string, extraRoots: string[] = []): string | null {
-  const match = discoverSkills(skillsDir, extraRoots).find((skill) => skill.name === skillName)
+export function resolveSkillRoot(
+  skillsDir: string,
+  skillName: string,
+  extraRoots: string[] = [],
+  options: { aiEnvSkillsRoot?: string } = {}
+): string | null {
+  const match = discoverSkills(skillsDir, extraRoots, options).find((skill) => skill.name === skillName)
   return match?.path ?? null
 }
 

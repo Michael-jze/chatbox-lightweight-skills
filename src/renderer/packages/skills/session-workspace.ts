@@ -38,6 +38,24 @@ export type SkillScriptRunParams = {
   runtime: SkillRuntimeSettings
 }
 
+export async function runAiBinForSession(
+  session: Pick<Session, 'id' | 'skillWorkspaceDir'>,
+  params: {
+    binName: string
+    args?: string[]
+    runtime: SkillRuntimeSettings
+  }
+): Promise<SkillScriptResult> {
+  const workspaceDir = await ensureSessionSkillWorkspace(session)
+  return skillsController.runAiBin({
+    sessionId: session.id,
+    workspaceDir,
+    binName: params.binName,
+    args: params.args,
+    runtime: params.runtime,
+  })
+}
+
 export async function runSkillScriptForSession(
   session: Pick<Session, 'id' | 'skillWorkspaceDir'>,
   params: Omit<SkillScriptRunParams, 'sessionId' | 'workspaceDir'>

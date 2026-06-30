@@ -11,7 +11,7 @@ import { z } from 'zod'
  * - skillPath: Optional file system path to skill
  */
 export interface SkillSource {
-  type: 'builtin' | 'local' | 'marketplace' | 'github'
+  type: 'builtin' | 'local' | 'ai-environment' | 'marketplace' | 'github'
   repo?: string
   commitHash?: string
   installedAt?: string
@@ -54,6 +54,8 @@ export interface SkillMetadata {
   compatibility?: string
   metadata?: Record<string, string>
   allowedTools?: string[]
+  /** When true, skill is discovered but not auto-enabled. */
+  disabled?: boolean
 }
 
 /**
@@ -91,15 +93,29 @@ export interface SkillRunScriptParams {
   runtime: SkillRuntimeSettings
 }
 
+export interface SkillRunAiBinParams {
+  sessionId: string
+  workspaceDir: string
+  binName: string
+  args?: string[]
+  runtime: SkillRuntimeSettings
+}
+
 export interface SkillRuntimeSettings {
   enabledSkillNames: string[]
   allowSkillNames: string[]
   denySkillNames: string[]
   allowScriptNames: string[]
   denyScriptNames: string[]
+  allowBinNames: string[]
+  denyBinNames: string[]
   pythonInterpreter: string
   nodeInterpreter: string
   envFilePath: string
+  aiEnvRoot: string
+  aiEnvSkillsEnabled: boolean
+  envShPath: string
+  revisionAuthor: string
   timeoutMs: number
   maxOutputBytes: number
 }
@@ -117,7 +133,16 @@ export const SkillSettingsSchema = z.object({
   nodeInterpreter: z.string().default('node'),
   /** Path to a JSON file merged into script process env (e.g. env.json). */
   envFilePath: z.string().default(''),
-  timeoutMs: z.number().min(1000).max(300_000).default(30_000),
+  /** Root of ~/AI_Envirionment-style layout (SKILLS + BINS). */
+  aiEnvRoot: z.string().default('~/AI_Envirionment'),
+  aiEnvSkillsEnabled: z.boolean().default(true),
+  /** Path to env.sh for validation/display; ai_bin launchers source it themselves. */
+  envShPath: z.string().default(''),
+  /** Default author for Word track changes (--author). */
+  revisionAuthor: z.string().default('Chatbox'),
+  allowBinNames: z.array(z.string()).default([]),
+  denyBinNames: z.array(z.string()).default([]),
+  timeoutMs: z.number().min(1000).max(300_000).default(120_000),
   maxOutputBytes: z.number().min(1024).max(10_485_760).default(1024 * 1024),
   /** Parent directory for per-session workspaces; empty uses system temp. */
   sandboxParentDir: z.string().default(''),

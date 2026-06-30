@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { filterEnabledSkills, isScriptAllowed, isSkillAllowed, parseEnvJson } from '../skills/policy'
+import { filterEnabledSkills, isBinAllowed, isScriptAllowed, isSkillAllowed, parseEnvJson } from '../skills/policy'
 
 describe('skills policy', () => {
   const baseSettings = {
@@ -8,6 +8,8 @@ describe('skills policy', () => {
     denySkillNames: [] as string[],
     allowScriptNames: [] as string[],
     denyScriptNames: [] as string[],
+    allowBinNames: [] as string[],
+    denyBinNames: [] as string[],
   }
 
   it('deny list wins over allow list for skills', () => {
@@ -52,6 +54,44 @@ describe('skills policy', () => {
         skillName: 'workspace-files',
         isBuiltin: true,
         settings: { ...baseSettings, enabledSkillNames: [] },
+      })
+    ).toBe(true)
+  })
+
+  it('excludes disabled skills unless explicitly enabled', () => {
+    expect(
+      isSkillAllowed({
+        skillName: 'semantic-scholar-search',
+        disabled: true,
+        settings: { ...baseSettings, enabledSkillNames: [] },
+      })
+    ).toBe(false)
+    expect(
+      isSkillAllowed({
+        skillName: 'semantic-scholar-search',
+        disabled: true,
+        settings: { ...baseSettings, enabledSkillNames: ['semantic-scholar-search'] },
+      })
+    ).toBe(true)
+  })
+
+  it('validates ai_bin allow/deny policy', () => {
+    expect(
+      isBinAllowed({
+        binName: 'ai_bin_valyu',
+        settings: { ...baseSettings, denyBinNames: ['ai_bin_valyu'] },
+      })
+    ).toBe(false)
+    expect(
+      isBinAllowed({
+        binName: 'ai_bin_valyu',
+        settings: { ...baseSettings, allowBinNames: ['ai_bin_zotero'] },
+      })
+    ).toBe(false)
+    expect(
+      isBinAllowed({
+        binName: 'ai_bin_valyu',
+        settings: baseSettings,
       })
     ).toBe(true)
   })

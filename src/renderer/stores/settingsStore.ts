@@ -3,6 +3,7 @@
 
 import * as defaults from '@shared/defaults'
 import { type ProviderSettings, type Settings, SettingsSchema } from '@shared/types'
+import { SkillSettingsSchema } from '@shared/types/skills'
 import type { DocumentParserConfig } from '@shared/types/settings'
 import deepmerge from 'deepmerge'
 import type { WritableDraft } from 'immer'
@@ -62,7 +63,7 @@ export const settingsStore = createStore<Settings & Action>()(
           },
           removeItem: async (name) => await storage.removeItem(name),
         })),
-        version: 4,
+        version: 5,
         partialize: (state) => {
           try {
             return SettingsSchema.parse(state)
@@ -96,6 +97,11 @@ export const settingsStore = createStore<Settings & Action>()(
               } else if (settings.skills.translationEnabled === undefined) {
                 settings.skills.translationEnabled = true
               }
+            case 4:
+              settings.skills = SkillSettingsSchema.parse({
+                ...defaults.settings().skills,
+                ...(settings.skills ?? {}),
+              })
             default:
               break
           }
@@ -121,6 +127,22 @@ export const initSettingsStore = async () => {
   if (!_initSettingsStorePromise) {
     _initSettingsStorePromise = new Promise<Settings>((resolve) => {
       const unsub = settingsStore.persist.onFinishHydration((val) => {
+        const mergedSkills = SkillSettingsSchema.parse({
+          ...defaults.settings().skills,
+          ...(val?.skills ?? {}),
+        })
+        const currentSkills = settingsStore.getState().skills
+        const needsSkillsPatch =
+          mergedSkills.aiEnvRoot !== currentSkills.aiEnvRoot ||
+          mergedSkills.aiEnvSkillsEnabled !== currentSkills.aiEnvSkillsEnabled ||
+          mergedSkills.revisionAuthor !== currentSkills.revisionAuthor ||
+          (currentSkills.allowBinNames ?? []).length !== mergedSkills.allowBinNames.length ||
+          (currentSkills.denyBinNames ?? []).length !== mergedSkills.denyBinNames.length ||
+          currentSkills.timeoutMs !== mergedSkills.timeoutMs
+
+        if (needsSkillsPatch) {
+          settingsStore.setState({ skills: mergedSkills })
+        }
         const providers = val?.providers
         const providersCount =
           providers && typeof providers === 'object' && !Array.isArray(providers) ? Object.keys(providers).length : 0
@@ -128,7 +150,7 @@ export const initSettingsStore = async () => {
           log.info(`[CONFIG_DEBUG] onFinishHydration: providersCount=0`)
         }
         unsub()
-        resolve(val)
+        resolve(settingsStore.getState())
       })
       settingsStore.persist.rehydrate()
     })

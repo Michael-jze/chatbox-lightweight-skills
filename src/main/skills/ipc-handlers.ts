@@ -1,9 +1,10 @@
 import type { SkillRuntimeSettings } from '@shared/types/skills'
+import { expandSkillBodyPlaceholders } from '@shared/skills/ai-env'
 import { app, dialog, ipcMain, shell } from 'electron'
 import fs from 'fs'
-import os from 'os'
 import path from 'path'
 import { getLogger } from '../util'
+import { runAiBin } from './ai-bin-runner'
 import { discoverSkills } from './discovery'
 import {
   ensureGlobalMemoryFile,
@@ -14,6 +15,7 @@ import {
 import { parseSkillFile } from './parser'
 import { cleanupExpiredSandboxes, cleanupSessionSandbox, ensureSessionSandbox, resolveWorkspaceDir } from './runtime'
 import { runSkillScript } from './runner'
+import { resolveAiEnvRootAbsolute, resolveExtraSkillRoots, type SkillDiscoveryOptions } from './skill-roots'
 import { isValidSkillName } from './validation'
 
 const log = getLogger('skills:ipc-handlers')
@@ -22,60 +24,81 @@ function getSkillsDir(): string {
   return path.join(app.getPath('userData'), 'skills')
 }
 
-function getExtraSkillRoots(): string[] {
-  const home = os.homedir()
-  const cwd = process.cwd()
-  const candidates = [
-    path.join(cwd, '.agents', 'skills'),
-    path.join(cwd, '.cursor', 'skills'),
-    path.join(home, '.agents', 'skills'),
-    path.join(home, '.cursor', 'skills'),
-  ]
-  return candidates.filter((p) => fs.existsSync(p))
+function getDiscoveryContext(options?: SkillDiscoveryOptions) {
+  return resolveExtraSkillRoots(options)
 }
 
 export function registerSkillsHandlers() {
   cleanupExpiredSandboxes()
 
-  ipcMain.handle('skills:discover', async () => {
+  ipcMain.handle('skills:discover', async (_event, options?: SkillDiscoveryOptions) => {
     try {
       const skillsDir = getSkillsDir()
-      return discoverSkills(skillsDir, getExtraSkillRoots())
+      const { extraRoots, aiEnvSkillsRoot } = getDiscoveryContext(options)
+      return discoverSkills(skillsDir, extraRoots, { aiEnvSkillsRoot })
     } catch (error) {
       log.error('skills:discover failed', error)
       throw error
     }
   })
 
-  ipcMain.handle('skills:load', async (_event, name: string) => {
-    try {
-      if (!name || typeof name !== 'string') {
-        return null
+  ipcMain.handle(
+    'skills:load',
+    async (
+      _event,
+      params: {
+        name: string
+        aiEnvRoot?: string
+        revisionAuthor?: string
       }
-      if (!isValidSkillName(name)) {
-        return null
-      }
+    ) => {
+      try {
+        const name = params?.name
+        if (!name || typeof name !== 'string') {
+          return null
+        }
+        if (!isValidSkillName(name)) {
+          return null
+        }
 
-      const all = discoverSkills(getSkillsDir(), getExtraSkillRoots())
-      const match = all.find((s) => s.name === name)
-      if (!match) {
-        return null
-      }
+        const discoveryOptions: SkillDiscoveryOptions = {
+          aiEnvRoot: params.aiEnvRoot,
+          aiEnvSkillsEnabled: true,
+        }
+        const { extraRoots, aiEnvSkillsRoot } = getDiscoveryContext(discoveryOptions)
+        const all = discoverSkills(getSkillsDir(), extraRoots, { aiEnvSkillsRoot })
+        const match = all.find((s) => s.name === name)
+        if (!match) {
+          return null
+        }
 
-      const skillMdPath = path.join(match.path, 'SKILL.md')
-      const parsed = parseSkillFile(skillMdPath, path.basename(match.path))
-      if (!parsed || parsed.metadata.name !== name) {
-        return null
+        const skillMdPath = path.join(match.path, 'SKILL.md')
+        const parsed = parseSkillFile(skillMdPath, path.basename(match.path))
+        if (!parsed || parsed.metadata.name !== name) {
+          return null
+        }
+
+        const aiEnvRoot = resolveAiEnvRootAbsolute({ aiEnvRoot: params.aiEnvRoot ?? '~/AI_Envirionment' })
+        const body = expandSkillBodyPlaceholders(
+          parsed.body,
+          aiEnvRoot,
+          params.revisionAuthor?.trim() || 'Chatbox'
+        )
+
+        return { body, metadata: parsed.metadata }
+      } catch (error) {
+        log.error(`skills:load failed for name=${params?.name}`, error)
+        throw error
       }
-      return { body: parsed.body, metadata: parsed.metadata }
-    } catch (error) {
-      log.error(`skills:load failed for name=${name}`, error)
-      throw error
     }
-  })
+  )
 
   ipcMain.handle('skills:get-directory', async () => {
     return getSkillsDir()
+  })
+
+  ipcMain.handle('skills:resolve-ai-env-root', async (_event, aiEnvRoot?: string) => {
+    return resolveAiEnvRootAbsolute({ aiEnvRoot: aiEnvRoot ?? '~/AI_Envirionment' })
   })
 
   ipcMain.handle('skills:open-directory', async () => {
@@ -97,6 +120,18 @@ export function registerSkillsHandlers() {
       properties: ['openFile'],
       filters: [{ name: 'JSON', extensions: ['json'] }],
       title: 'Select env.json',
+    })
+    if (result.canceled || result.filePaths.length === 0) {
+      return { canceled: true }
+    }
+    return { canceled: false, path: result.filePaths[0] }
+  })
+
+  ipcMain.handle('skills:open-env-sh-dialog', async () => {
+    const result = await dialog.showOpenDialog({
+      properties: ['openFile'],
+      filters: [{ name: 'Shell', extensions: ['sh'] }],
+      title: 'Select env.sh',
     })
     if (result.canceled || result.filePaths.length === 0) {
       return { canceled: true }
@@ -180,9 +215,39 @@ export function registerSkillsHandlers() {
       }
     ) => {
       try {
-        return await runSkillScript(getSkillsDir(), params, getExtraSkillRoots())
+        const { extraRoots, aiEnvSkillsRoot } = getDiscoveryContext({
+          aiEnvRoot: params.runtime.aiEnvRoot,
+          aiEnvSkillsEnabled: params.runtime.aiEnvSkillsEnabled,
+        })
+        return await runSkillScript(getSkillsDir(), params, extraRoots, { aiEnvSkillsRoot })
       } catch (error) {
         log.error(`skills:run-script failed for ${params.skillName}/${params.scriptName}`, error)
+        return {
+          success: false,
+          stdout: '',
+          stderr: error instanceof Error ? error.message : 'Unknown error',
+          exitCode: null,
+        }
+      }
+    }
+  )
+
+  ipcMain.handle(
+    'skills:run-ai-bin',
+    async (
+      _event,
+      params: {
+        sessionId: string
+        workspaceDir: string
+        binName: string
+        args?: string[]
+        runtime: SkillRuntimeSettings
+      }
+    ) => {
+      try {
+        return await runAiBin(params)
+      } catch (error) {
+        log.error(`skills:run-ai-bin failed for ${params.binName}`, error)
         return {
           success: false,
           stdout: '',

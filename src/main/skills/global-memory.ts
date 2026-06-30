@@ -13,13 +13,16 @@ const DEFAULT_TEMPLATE = `# Global Memory
 
 ## 用户 (User)
 - 姓名 / 称呼：
-- 角色 / 领域：
+- 角色 / 领域：科研写作与文献管理
 - 偏好与禁忌：
 
 ## 助手 (Assistant)
-- 语气（如：专业、简洁、友好）：
-- 角色定位：
-- 输出风格（如：先结论后细节）：
+- 语气：专业、简洁
+- 角色定位：科研工作流助手（替代 WorkBuddy）
+- 工具习惯：
+  - 先 load_skill 再 run_ai_bin 执行 ai_bin_* 命令
+  - Word 修订作者使用 Settings → Skills 中的 Revision author
+  - 会话工作区文件读写使用 workspace-files 或 session workspace
 `
 
 export function resolveGlobalMemoryPath(customPath?: string | null): string {
