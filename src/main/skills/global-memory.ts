@@ -22,7 +22,8 @@ const DEFAULT_TEMPLATE = `# Global Memory
 - 工具习惯：
   - 先 load_skill 再 run_ai_bin 执行 ai_bin_* 命令
   - Word 修订作者使用 Settings → Skills 中的 Revision author
-  - 会话工作区文件读写使用 workspace-files 或 session workspace
+  - 会话工作区文件读写：run_skill_script + workspace-files（read_file.js / write_file.js）；需先选定工作区目录
+  - Word/Paper 类 ai_bin（如 ai_bin_word_track_changes、ai_bin_paper_preflight）依赖 Python 包 lxml，请在 AI_Envirionment 的 conda 环境中执行 pip install lxml
 `
 
 export function resolveGlobalMemoryPath(customPath?: string | null): string {

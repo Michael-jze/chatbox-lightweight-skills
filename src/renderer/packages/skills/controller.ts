@@ -1,4 +1,4 @@
-import type { CompactSkillScriptResult, SkillInfo, SkillMetadata, SkillRuntimeSettings } from '@shared/types/skills'
+import type { CompactSkillScriptResult, SkillInfo, SkillMetadata, SkillRuntimeSettings, WorkspaceDirEntry } from '@shared/types/skills'
 
 export interface SkillDiscoveryOptions {
   aiEnvRoot?: string
@@ -86,5 +86,13 @@ export const skillsController = {
 
   openGlobalMemoryFile(customPath?: string): Promise<{ success: boolean; path?: string }> {
     return window.electronAPI.invoke('skills:open-global-memory', customPath)
+  },
+
+  listWorkspaceDir(params: { workspaceRoot: string; dirPath: string }): Promise<WorkspaceDirEntry[]> {
+    return window.electronAPI.invoke('skills:list-workspace-dir', params)
+  },
+
+  revealWorkspacePath(targetPath: string, workspaceRoot: string): Promise<{ success: boolean }> {
+    return window.electronAPI.invoke('skills:reveal-workspace-path', { workspaceRoot, targetPath })
   },
 }

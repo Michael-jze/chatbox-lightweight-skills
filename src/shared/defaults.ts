@@ -139,7 +139,7 @@ export function settings(): Settings {
       enabledSkillNames: [],
       allowSkillNames: [],
       denySkillNames: [],
-      allowScriptNames: [],
+      allowScriptNames: ['read_file.js', 'write_file.js'],
       denyScriptNames: [],
       allowBinNames: [],
       denyBinNames: [],

@@ -1,4 +1,4 @@
-import type { KnowledgeBase, MessagePicture, Toast } from '@shared/types'
+import type { MessagePicture, Toast } from '@shared/types'
 import type { RefObject } from 'react'
 import type { VirtuosoHandle } from 'react-virtuoso'
 import { v4 as uuidv4 } from 'uuid'
@@ -28,9 +28,7 @@ export const uiStore = createStore(
         sessionWebBrowsingMap: {} as Record<string, boolean | undefined>,
         // Cache for current session's computed web browsing state (for keyboard shortcut)
         currentWebBrowsingDisplay: { sessionId: '', value: false } as { sessionId: string; value: boolean },
-        sessionKnowledgeBaseMap: {} as Record<string, Pick<KnowledgeBase, 'id' | 'name'> | undefined>,
         newSessionState: {} as {
-          knowledgeBase?: Pick<KnowledgeBase, 'id' | 'name'>
           webBrowsing?: boolean
         },
         pictureShow: null as {
@@ -42,7 +40,6 @@ export const uiStore = createStore(
           onSave?: () => void
         } | null,
         widthFull: false, // Stored UI preference
-        showCopilotsInNewSession: false,
         sidebarWidth: null as number | null, // Custom sidebar width, null means use default
         sidebarMode: 'chat' as 'chat' | 'task',
       },
@@ -103,23 +100,6 @@ export const uiStore = createStore(
 
         setMessageScrollingAtBottom: (messageScrollingAtBottom: boolean) => {
           set({ messageScrollingAtBottom })
-        },
-
-        addSessionKnowledgeBase: (sessionId: string, knowledgeBase: Pick<KnowledgeBase, 'id' | 'name'>) => {
-          set((state) => ({
-            sessionKnowledgeBaseMap: {
-              ...state.sessionKnowledgeBaseMap,
-              [sessionId]: knowledgeBase,
-            },
-          }))
-        },
-
-        removeSessionKnowledgeBase: (sessionId: string) => {
-          set((state) => {
-            const newMap = { ...state.sessionKnowledgeBaseMap }
-            delete newMap[sessionId]
-            return { sessionKnowledgeBaseMap: newMap }
-          })
         },
 
         getSessionWebBrowsing: (sessionId: string) => {
@@ -191,10 +171,6 @@ export const uiStore = createStore(
           })
         },
 
-        setShowCopilotsInNewSession: (showCopilotsInNewSession: boolean) => {
-          set({ showCopilotsInNewSession })
-        },
-
         setSidebarWidth: (sidebarWidth: number | null) => {
           set({ sidebarWidth })
         },
@@ -209,7 +185,6 @@ export const uiStore = createStore(
       version: 0,
       partialize: (state) => ({
         widthFull: state.widthFull,
-        showCopilotsInNewSession: state.showCopilotsInNewSession,
         sidebarWidth: state.sidebarWidth,
         sessionWebBrowsingMap: state.sessionWebBrowsingMap,
       }),

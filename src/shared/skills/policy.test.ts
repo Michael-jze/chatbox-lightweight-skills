@@ -48,6 +48,23 @@ describe('skills policy', () => {
     ).toBe(false)
   })
 
+  it('always allows built-in workspace-files scripts unless denied', () => {
+    expect(
+      isScriptAllowed({
+        skillName: 'workspace-files',
+        scriptName: 'read_file.js',
+        settings: { ...baseSettings, allowScriptNames: ['other.js'] },
+      })
+    ).toBe(true)
+    expect(
+      isScriptAllowed({
+        skillName: 'workspace-files',
+        scriptName: 'write_file.js',
+        settings: { ...baseSettings, denyScriptNames: ['write_file.js'] },
+      })
+    ).toBe(false)
+  })
+
   it('allows built-in skills without enabled list', () => {
     expect(
       isSkillAllowed({

@@ -112,6 +112,12 @@ export interface CompactSkillScriptResult {
   totalBytes: number
 }
 
+export type WorkspaceDirEntry = {
+  name: string
+  path: string
+  type: 'file' | 'directory'
+}
+
 export interface SkillRuntimeSettings {
   enabledSkillNames: string[]
   allowSkillNames: string[]

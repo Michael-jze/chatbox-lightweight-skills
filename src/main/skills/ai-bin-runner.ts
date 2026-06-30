@@ -1,12 +1,13 @@
 import type { SkillRunAiBinParams, SkillScriptResult } from '@shared/types/skills'
 import type { CompactSkillScriptResult } from '@shared/types/skills'
 import { isBinAllowed } from '@shared/skills/policy'
-import { isValidAiBinName, resolveAiEnvBinsDir, resolveAiEnvRoot } from '@shared/skills/ai-env'
+import { isValidAiBinName, resolveAiEnvBinsDir, resolveAiEnvRoot, resolveAiEnvShPath } from '@shared/skills/ai-env'
 import { spawn } from 'child_process'
 import fs from 'fs'
 import os from 'os'
 import path from 'path'
 import { getLogger } from '../util'
+import { loadEnvFromFilePath } from './env-loader'
 import { ensureSessionSandbox } from './runtime'
 import { spillAndCompactSkillResult } from './tool-result-spill'
 
@@ -14,6 +15,22 @@ const log = getLogger('skills:ai-bin-runner')
 
 const MAX_ARGS = 64
 const MAX_ARG_LENGTH = 8192
+
+function shellQuote(value: string): string {
+  return `'${value.replace(/'/g, `'\\''`)}'`
+}
+
+function buildAiBinSpawnCommand(
+  resolvedBinPath: string,
+  envShPath: string,
+  args: string[]
+): { command: string; commandArgs: string[] } {
+  if (fs.existsSync(envShPath)) {
+    const shellCmd = [`set -e`, `source ${shellQuote(envShPath)}`, `exec ${shellQuote(resolvedBinPath)}`, ...args.map(shellQuote)].join(' ')
+    return { command: '/bin/bash', commandArgs: ['-lc', shellCmd] }
+  }
+  return { command: '/bin/bash', commandArgs: [resolvedBinPath, ...args] }
+}
 
 function validateArgs(args: string[] | undefined): string[] | { error: string } {
   const list = args ?? []
@@ -84,8 +101,22 @@ export async function runAiBin(params: SkillRunAiBinParams): Promise<CompactSkil
 
   const sandboxDir = ensureSessionSandbox(sessionId, workspaceDir)
   const resolvedBinPath = fs.realpathSync(binPath)
+  const envShPath = resolveAiEnvShPath(runtime.envShPath, runtime.aiEnvRoot, homeDir)
+  const envFile = loadEnvFromFilePath(runtime.envFilePath)
+  const { command, commandArgs } = buildAiBinSpawnCommand(resolvedBinPath, envShPath, validatedArgs)
   const timeoutMs = runtime.timeoutMs
   const maxOutputBytes = runtime.maxOutputBytes
+
+  const processEnv: NodeJS.ProcessEnv = {
+    PATH: process.env.PATH,
+    HOME: process.env.HOME,
+    LANG: process.env.LANG ?? 'en_US.UTF-8',
+    TERM: process.env.TERM ?? 'xterm-256color',
+    CHATBOX_SESSION_ID: sessionId,
+    SKILL_SANDBOX_DIR: sandboxDir,
+    AI_ENV_ROOT: aiEnvRoot,
+    ...(envFile.ok ? envFile.env : {}),
+  }
 
   const rawResult = await new Promise<SkillScriptResult>((resolve) => {
     let stdout = ''
@@ -98,20 +129,13 @@ export async function runAiBin(params: SkillRunAiBinParams): Promise<CompactSkil
       resolve(result)
     }
 
-    log.info(`Running ai_bin ${binName} in workspace ${sandboxDir}`)
+    log.info(`Running ai_bin ${binName} in workspace ${sandboxDir} (env.sh: ${envShPath})`)
 
-    const child = spawn('/bin/bash', [resolvedBinPath, ...validatedArgs], {
+    const child = spawn(command, commandArgs, {
       cwd: sandboxDir,
       timeout: timeoutMs,
       stdio: ['ignore', 'pipe', 'pipe'],
-      env: {
-        PATH: process.env.PATH,
-        HOME: process.env.HOME,
-        LANG: process.env.LANG ?? 'en_US.UTF-8',
-        TERM: process.env.TERM ?? 'xterm-256color',
-        CHATBOX_SESSION_ID: sessionId,
-        SKILL_SANDBOX_DIR: sandboxDir,
-      },
+      env: processEnv,
       shell: false,
     })
 

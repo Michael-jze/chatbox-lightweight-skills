@@ -340,7 +340,6 @@ export async function deleteSession(id: string) {
   updateSessionListData((items) => items.filter((session) => session.id !== id))
   // Clean up UI state and caches to prevent memory leaks
   uiStore.getState().clearSessionWebBrowsing(id)
-  uiStore.getState().removeSessionKnowledgeBase(id)
   cleanupSessionAtomCache(id)
   clearScrollPositionCache(id)
   delete sessionUpdateQueues[id]
@@ -375,7 +374,6 @@ export async function deleteSessions(ids: string[]) {
 
   for (const id of uniqueIds) {
     uiStore.getState().clearSessionWebBrowsing(id)
-    uiStore.getState().removeSessionKnowledgeBase(id)
     cleanupSessionAtomCache(id)
     clearScrollPositionCache(id)
     delete sessionUpdateQueues[id]

@@ -136,18 +136,20 @@ export default defineConfig(({ mode }) => {
               telemetry: false,
             })
           : undefined,
-        isProduction
-          ? {
-              name: 'copy-builtin-skills',
-              writeBundle() {
-                const src = resolve(__dirname, 'src/main/skills/builtin')
-                const dest = resolve(__dirname, 'release/app/dist/main/builtin')
-                if (fs.existsSync(src)) {
-                  fs.cpSync(src, dest, { recursive: true })
-                }
-              },
+        {
+          name: 'copy-builtin-skills',
+          writeBundle() {
+            const src = resolve(__dirname, 'src/main/skills/builtin')
+            const dest = resolve(
+              __dirname,
+              isProduction ? 'release/app/dist/main/builtin' : 'output/main/builtin'
+            )
+            if (fs.existsSync(src)) {
+              fs.mkdirSync(path.dirname(dest), { recursive: true })
+              fs.cpSync(src, dest, { recursive: true })
             }
-          : undefined,
+          },
+        },
       ].filter(Boolean),
       build: {
         outDir: isProduction ? 'release/app/dist/main' : undefined,

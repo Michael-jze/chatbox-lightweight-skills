@@ -24,10 +24,9 @@ mac:
   notarize: false
   category: public.app-category.developer-tools
   target:
-    target: default
-    arch:
-      - arm64
-      - x64
+    - target: dmg
+      arch:
+        - x64
   type: distribution
   hardenedRuntime: true
   entitlements: assets/entitlements.mac.plist

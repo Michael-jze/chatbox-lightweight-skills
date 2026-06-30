@@ -12,12 +12,25 @@ export function getBuiltinSkillsRoots(): string[] {
     appPath = undefined
   }
 
-  const roots = [
+  const candidates = [
     path.join(__dirname, 'builtin'),
     ...(appPath
-      ? [path.join(appPath, 'src/main/skills/builtin'), path.join(appPath, 'builtin-skills')]
+      ? [
+          path.join(appPath, 'dist', 'main', 'builtin'),
+          path.join(appPath, 'src', 'main', 'skills', 'builtin'),
+          path.join(appPath, 'builtin-skills'),
+        ]
       : []),
-    ...(process.resourcesPath ? [path.join(process.resourcesPath, 'builtin-skills')] : []),
+    ...(process.resourcesPath
+      ? [
+          path.join(process.resourcesPath, 'builtin-skills'),
+          path.join(process.resourcesPath, 'app.asar', 'dist', 'main', 'builtin'),
+        ]
+      : []),
+    path.resolve(process.cwd(), 'src/main/skills/builtin'),
+    path.resolve(process.cwd(), 'output/main/builtin'),
+    path.resolve(process.cwd(), 'release/app/dist/main/builtin'),
   ]
-  return [...new Set(roots)].filter((root) => fs.existsSync(root))
+
+  return [...new Set(candidates)].filter((root) => fs.existsSync(root))
 }

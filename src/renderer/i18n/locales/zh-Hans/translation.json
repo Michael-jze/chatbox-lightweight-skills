@@ -205,6 +205,7 @@
   "Copilot Settings": "搭档设置",
   "copy": "复制",
   "Copy": "复制",
+  "Copy path": "复制路径",
   "Copy reasoning content": "复制思考内容",
   "Cost": "成本",
   "Cost Priority: Compacts early to save tokens, may lose some context": "成本优先：提前压缩以节省 token，可能会丢失部分上下文",
@@ -571,6 +572,7 @@
   "No favorite models": "没有收藏的模型",
   "No featured copilots available.": "没有可用的推荐搭档",
   "No files were dropped": "未拖放任何文件",
+  "No files yet": "暂无文件",
   "No history yet": "暂无历史记录",
   "No Knowledge Base Yet": "暂无知识库",
   "No licenses found": "未找到许可证",
@@ -980,5 +982,8 @@
   "Your license has expired.": "您的许可证已过期。",
   "Your license has expired. Please check your subscription or purchase a new one.": "您的许可证已过期。请检查您的订阅或购买新的许可证。",
   "Your license has expired. You can continue using your expansion pack.": "您的许可证已过期。您可以继续使用您的扩展包。",
-  "Your rating on the App Store would help make Chatbox even better!": "您的 App Store 评分将帮助 Chatbox 变得更好！"
+  "Your rating on the App Store would help make Chatbox even better!": "您的 App Store 评分将帮助 Chatbox 变得更好！",
+  "Reveal in Finder": "在 Finder 中显示",
+  "Workspace": "工作区",
+  "Workspace files": "工作区文件"
 }

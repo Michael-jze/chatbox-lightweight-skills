@@ -14,7 +14,6 @@ import ReportContent from './ReportContent'
 import SessionSettings from './SessionSettings'
 import ThreadNameEdit from './ThreadNameEdit'
 import Welcome from './Welcome'
-import CopilotSettingsModal from '../routes/copilots/-components/CopilotSettingsModal'
 
 NiceModal.register('welcome', Welcome)
 NiceModal.register('file-parse-error', FileParseError)
@@ -31,4 +30,3 @@ NiceModal.register('report-content', ReportContent)
 NiceModal.register('model-edit', ModelEdit)
 NiceModal.register('thread-name-edit', ThreadNameEdit)
 NiceModal.register('edgeone-deploy-success', EdgeOneDeploySuccess)
-NiceModal.register('copilot-settings', CopilotSettingsModal)

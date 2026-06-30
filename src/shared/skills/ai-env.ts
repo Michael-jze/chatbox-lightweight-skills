@@ -89,7 +89,6 @@ export function buildExtraSkillRootCandidates(params: {
 export function expandSkillBodyPlaceholders(body: string, aiEnvRoot: string, revisionAuthor: string): string {
   const workspaceHint = 'search_requests'
   return body
-    .replaceAll('/Users/junyanzeng/AI_Envirionment', aiEnvRoot)
     .replaceAll('$AI_ENV_ROOT', aiEnvRoot)
     .replaceAll('.workbuddy/search_requests', workspaceHint)
     .replaceAll('present_files', 'attach or reference workspace files')
@@ -110,6 +109,8 @@ Tool usage:
 - Manual search handoff (search-relay): write markdown under {session_workspace}/search_requests/.
 
 Available ai_bin commands: ${KNOWN_AI_BIN_NAMES.join(', ')}
+
+Python deps: Word/Paper bins (e.g. ai_bin_word_track_changes, ai_bin_paper_preflight) require lxml in the conda env activated by env.sh. Install with: pip install lxml
 </ai_environment>
 `
 }

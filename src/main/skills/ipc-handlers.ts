@@ -16,6 +16,7 @@ import {
 import { parseSkillFile } from './parser'
 import { cleanupExpiredSandboxes, cleanupSessionSandbox, ensureSessionSandbox, resolveWorkspaceDir } from './runtime'
 import { runSkillScript } from './runner'
+import { listWorkspaceDirectory, resolvePathWithinWorkspace } from './workspace-tree'
 import { resolveAiEnvRootAbsolute, resolveExtraSkillRoots, type SkillDiscoveryOptions } from './skill-roots'
 import { isValidSkillName } from './validation'
 
@@ -277,4 +278,39 @@ export function registerSkillsHandlers() {
       }
     }
   )
+
+  ipcMain.handle(
+    'skills:list-workspace-dir',
+    async (
+      _event,
+      params: {
+        workspaceRoot: string
+        dirPath: string
+      }
+    ) => {
+      try {
+        resolvePathWithinWorkspace(params.workspaceRoot, params.dirPath)
+        return listWorkspaceDirectory(params.workspaceRoot, params.dirPath)
+      } catch (error) {
+        log.error('skills:list-workspace-dir failed', error)
+        throw error
+      }
+    }
+  )
+
+  ipcMain.handle('skills:reveal-workspace-path', async (_event, params: { workspaceRoot: string; targetPath: string }) => {
+    try {
+      const safePath = resolvePathWithinWorkspace(params.workspaceRoot, params.targetPath)
+      const stat = fs.statSync(safePath)
+      if (stat.isDirectory()) {
+        await shell.openPath(safePath)
+      } else {
+        shell.showItemInFolder(safePath)
+      }
+      return { success: true }
+    } catch (error) {
+      log.error('skills:reveal-workspace-path failed', error)
+      throw error
+    }
+  })
 }

@@ -310,7 +310,7 @@ export const SkillsSection: FC = () => {
         <TextInput
           style={{ flex: 1 }}
           label={t('Script environment file (JSON, optional)')}
-          description={t('Optional JSON env for run_skill_script only. ai_bin uses env.sh.')}
+          description={t('Optional JSON env for run_skill_script / ai_bin. ai_bin also sources env.sh from AI_Envirionment.')}
           value={skillSettings.envFilePath}
           onChange={(e) => updateSkillSettings({ envFilePath: e.currentTarget.value })}
           placeholder="/path/to/env.json"
@@ -325,7 +325,7 @@ export const SkillsSection: FC = () => {
           label={t('Python interpreter')}
           value={skillSettings.pythonInterpreter}
           onChange={(e) => updateSkillSettings({ pythonInterpreter: e.currentTarget.value })}
-          placeholder="python3"
+          placeholder="python3 or ~/miniconda3/envs/base_env/bin/python"
         />
         <TextInput
           label={t('Node interpreter')}

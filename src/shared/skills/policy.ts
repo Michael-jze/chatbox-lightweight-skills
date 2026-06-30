@@ -1,6 +1,15 @@
 import type { SkillRuntimeSettings } from '../types/skills'
 import { isValidAiBinName } from './ai-env'
 
+export const BUILTIN_WORKSPACE_SKILL_NAME = 'workspace-files'
+
+/** Built-in workspace read/write scripts — always permitted when deny list does not block them. */
+export const BUILTIN_WORKSPACE_SCRIPT_NAMES = ['read_file.js', 'write_file.js'] as const
+
+export function isBuiltinWorkspaceScript(skillName: string, scriptName: string): boolean {
+  return skillName === BUILTIN_WORKSPACE_SKILL_NAME && BUILTIN_WORKSPACE_SCRIPT_NAMES.includes(scriptName as (typeof BUILTIN_WORKSPACE_SCRIPT_NAMES)[number])
+}
+
 export interface SkillPolicyInput {
   skillName?: string
   scriptName?: string
@@ -61,13 +70,16 @@ export function isSkillAllowed(input: SkillPolicyInput): boolean {
  * Deny always wins. Non-empty allow list restricts to listed script names only.
  */
 export function isScriptAllowed(input: SkillPolicyInput): boolean {
-  const { scriptName, settings } = input
+  const { skillName, scriptName, settings } = input
   if (!scriptName) {
     return false
   }
   const { allowScriptNames, denyScriptNames } = settings
   if (matchesList(scriptName, denyScriptNames)) {
     return false
+  }
+  if (skillName && isBuiltinWorkspaceScript(skillName, scriptName)) {
+    return true
   }
   if (allowScriptNames.length > 0 && !matchesList(scriptName, allowScriptNames)) {
     return false
