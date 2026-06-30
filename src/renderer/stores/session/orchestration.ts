@@ -19,6 +19,7 @@ import { settingsStore } from '../settingsStore'
 import { createAttachmentResolver } from './attachment-resolver'
 import { applyLegacyToolFallback } from './legacy-tool-fallback'
 import { persistStreamingMessage, updateStreamingCache } from './messages'
+import { createStreamingUpdateScheduler } from './streaming-ui-scheduler'
 import { getOCRModel, ocrImagesInMessages } from './ocr-helper'
 import { createInitialState, processStreamChunk } from './stream-chunk-processor'
 import { buildToolsForSession } from './tools-builder'
@@ -162,6 +163,10 @@ export async function orchestrateGeneration(
 
     let processorState = createInitialState(fallbackToolCallPart ? [fallbackToolCallPart] : undefined)
 
+    const uiScheduler = createStreamingUpdateScheduler((message) => {
+      updateStreamingCache(sessionId, message)
+    })
+
     const streamCallbacks = {
       onFileReceived: async (mediaType: string, base64: string) => {
         const storageKey = StorageKeyGenerator.picture(`${session.id}:${targetMsg.id}`)
@@ -180,7 +185,7 @@ export async function orchestrateGeneration(
             ...targetMsg,
             status: result.statusChunk.status ? [result.statusChunk.status] : [],
           }
-          updateStreamingCache(sessionId, targetMsg)
+          uiScheduler.schedule(targetMsg)
         }
         continue
       }
@@ -203,9 +208,10 @@ export async function orchestrateGeneration(
 
       const shouldPersist = Date.now() - lastPersistTimestamp >= persistInterval
       if (shouldPersist) {
+        uiScheduler.flush()
         void persistStreamingMessage(sessionId, targetMsg)
       } else {
-        updateStreamingCache(sessionId, targetMsg)
+        uiScheduler.schedule(targetMsg)
       }
       if (shouldPersist) {
         lastPersistTimestamp = Date.now()
@@ -217,6 +223,8 @@ export async function orchestrateGeneration(
         part.duration = Date.now() - part.startTime
       }
     }
+
+    uiScheduler.flush()
 
     targetMsg = {
       ...targetMsg,

@@ -377,6 +377,8 @@ export const SettingsSchema = GlobalSessionSettingsSchema.extend({
     aiEnvSkillsEnabled: true,
     envShPath: '',
     revisionAuthor: 'Chatbox',
+    toolLogEnabled: true,
+    toolResultPreviewChars: 8192,
     timeoutMs: 120_000,
     maxOutputBytes: 1024 * 1024,
     sandboxParentDir: '',

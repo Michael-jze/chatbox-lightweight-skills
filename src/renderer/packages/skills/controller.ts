@@ -1,4 +1,4 @@
-import type { SkillInfo, SkillMetadata, SkillRuntimeSettings, SkillScriptResult } from '@shared/types/skills'
+import type { CompactSkillScriptResult, SkillInfo, SkillMetadata, SkillRuntimeSettings } from '@shared/types/skills'
 
 export interface SkillDiscoveryOptions {
   aiEnvRoot?: string
@@ -38,7 +38,7 @@ export const skillsController = {
     scriptName: string
     args?: string[]
     runtime: SkillRuntimeSettings
-  }): Promise<SkillScriptResult> {
+  }): Promise<CompactSkillScriptResult> {
     return window.electronAPI.invoke('skills:run-script', params)
   },
 
@@ -48,7 +48,7 @@ export const skillsController = {
     binName: string
     args?: string[]
     runtime: SkillRuntimeSettings
-  }): Promise<SkillScriptResult> {
+  }): Promise<CompactSkillScriptResult> {
     return window.electronAPI.invoke('skills:run-ai-bin', params)
   },
 

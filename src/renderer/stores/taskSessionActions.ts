@@ -11,6 +11,7 @@ import { featureFlags } from '@/utils/feature-flags'
 import { lastUsedModelStore } from './lastUsedModelStore'
 import { queryClient } from './queryClient'
 import { createInitialState, processStreamChunk } from './session/stream-chunk-processor'
+import { createStreamingUpdateScheduler } from './session/streaming-ui-scheduler'
 import { buildToolsForSession } from './session/tools-builder'
 import { settingsStore } from './settingsStore'
 import { TASK_SESSION_QUERY_KEY, updateTaskSession } from './taskSessionStore'
@@ -233,6 +234,10 @@ async function generateTaskResponse(taskId: string, targetMsg: Message, contextM
 
     let processorState = createInitialState()
 
+    const uiScheduler = createStreamingUpdateScheduler((message) => {
+      updateTaskQueryCache(queryKey, message)
+    })
+
     const streamCallbacks = {
       onFileReceived: async (_mediaType: string, _base64: string) => {
         return ''
@@ -249,7 +254,7 @@ async function generateTaskResponse(taskId: string, targetMsg: Message, contextM
             ...targetMsg,
             status: result.statusChunk.status ? [result.statusChunk.status] : [],
           }
-          updateTaskQueryCache(queryKey, targetMsg)
+          uiScheduler.schedule(targetMsg)
         }
         continue
       }
@@ -265,8 +270,10 @@ async function generateTaskResponse(taskId: string, targetMsg: Message, contextM
         status: textLength > 0 ? [] : nextMsg.status,
       }
 
-      updateTaskQueryCache(queryKey, targetMsg)
+      uiScheduler.schedule(targetMsg)
     }
+
+    uiScheduler.flush()
 
     for (const part of processorState.contentParts) {
       if (part.type === 'reasoning' && part.startTime && !part.duration) {

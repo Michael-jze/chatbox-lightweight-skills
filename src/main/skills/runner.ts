@@ -1,4 +1,4 @@
-import type { SkillRunScriptParams, SkillScriptResult, SkillRuntimeSettings } from '@shared/types/skills'
+import type { CompactSkillScriptResult, SkillRunScriptParams, SkillRuntimeSettings, SkillScriptResult } from '@shared/types/skills'
 import { isScriptAllowed } from '@shared/skills/policy'
 import { loadEnvFromFilePath } from './env-loader'
 import { spawn } from 'child_process'
@@ -7,6 +7,7 @@ import path from 'path'
 import { getLogger } from '../util'
 import { ensureSessionSandbox } from './runtime'
 import { resolveSkillRoot } from './discovery'
+import { spillAndCompactSkillResult } from './tool-result-spill'
 
 const log = getLogger('skills:runner')
 
@@ -66,71 +67,83 @@ export async function runSkillScript(
   params: SkillRunScriptParams,
   extraRoots: string[] = [],
   options: { aiEnvSkillsRoot?: string } = {}
-): Promise<SkillScriptResult> {
+): Promise<CompactSkillScriptResult> {
   const { sessionId, skillName, scriptName, runtime, workspaceDir } = params
 
+  const spillOptions = {
+    workspaceDir,
+    logPrefix: `${skillName}_${scriptName}`,
+    previewChars: runtime.toolResultPreviewChars ?? 8192,
+    toolLogEnabled: runtime.toolLogEnabled ?? true,
+  }
+
+  const spill = (partial: Partial<SkillScriptResult> & { success: boolean }) =>
+    spillAndCompactSkillResult(
+      {
+        success: partial.success,
+        stdout: partial.stdout ?? '',
+        stderr: partial.stderr ?? '',
+        exitCode: partial.exitCode ?? null,
+      },
+      spillOptions
+    )
+
   if (!isScriptAllowed({ skillName, scriptName, settings: runtime })) {
-    return {
+    return spill({
       success: false,
-      stdout: '',
       stderr: `Script "${scriptName}" is not allowed by policy.`,
-      exitCode: null,
-    }
+    })
   }
 
   if (skillName.includes('..') || skillName.includes('/') || skillName.includes('\\')) {
-    return { success: false, stdout: '', stderr: 'Invalid skill name', exitCode: null }
+    return spill({ success: false, stderr: 'Invalid skill name' })
   }
   if (scriptName.includes('..') || scriptName.includes('/') || scriptName.includes('\\')) {
-    return { success: false, stdout: '', stderr: 'Invalid script name', exitCode: null }
+    return spill({ success: false, stderr: 'Invalid script name' })
   }
 
   const skillRoot = resolveSkillRoot(skillsDir, skillName, extraRoots, options)
   if (!skillRoot) {
-    return { success: false, stdout: '', stderr: `Skill not found: ${skillName}`, exitCode: null }
+    return spill({ success: false, stderr: `Skill not found: ${skillName}` })
   }
 
   const scriptPath = path.join(skillRoot, 'scripts', scriptName)
   if (!fs.existsSync(scriptPath)) {
-    return { success: false, stdout: '', stderr: `Script not found: ${scriptName}`, exitCode: null }
+    return spill({ success: false, stderr: `Script not found: ${scriptName}` })
   }
 
   const ext = path.extname(scriptName).toLowerCase()
   if (!SUPPORTED_EXTENSIONS.has(ext)) {
-    return {
+    return spill({
       success: false,
-      stdout: '',
       stderr: `Unsupported script extension "${ext}". Allowed: .py, .js, .mjs, .cjs`,
-      exitCode: null,
-    }
+    })
   }
 
   const interpreter = resolveInterpreter(ext, runtime)
   if (!interpreter) {
-    return {
+    return spill({
       success: false,
-      stdout: '',
       stderr: `No interpreter configured for ${ext} scripts`,
-      exitCode: null,
-    }
+    })
   }
 
   const resolvedSkillRoot = fs.realpathSync(skillRoot)
   const resolvedScriptPath = fs.realpathSync(scriptPath)
   if (!resolvedScriptPath.startsWith(`${resolvedSkillRoot}${path.sep}`)) {
-    return { success: false, stdout: '', stderr: 'Script path escapes skill directory', exitCode: null }
+    return spill({ success: false, stderr: 'Script path escapes skill directory' })
   }
 
   const validatedArgs = validateArgs(params.args)
   if ('error' in validatedArgs) {
-    return { success: false, stdout: '', stderr: validatedArgs.error, exitCode: null }
+    return spill({ success: false, stderr: validatedArgs.error })
   }
 
   const sandboxDir = ensureSessionSandbox(sessionId, workspaceDir)
   const skillDir = resolvedSkillRoot
   const envResult = buildProcessEnv(sandboxDir, skillDir, sessionId, runtime)
   if (!envResult.ok) {
-    return { success: false, stdout: '', stderr: envResult.error, exitCode: null }
+    return spill({ success: false, stderr: envResult.error })
   }
 
   const command = interpreter
@@ -138,7 +151,7 @@ export async function runSkillScript(
   const timeoutMs = runtime.timeoutMs
   const maxOutputBytes = runtime.maxOutputBytes
 
-  return new Promise((resolve) => {
+  const rawResult = await new Promise<SkillScriptResult>((resolve) => {
     let stdout = ''
     let stderr = ''
     let settled = false
@@ -193,4 +206,6 @@ export async function runSkillScript(
       }
     }, timeoutMs)
   })
+
+  return spillAndCompactSkillResult(rawResult, spillOptions)
 }

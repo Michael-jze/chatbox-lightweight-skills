@@ -20,8 +20,9 @@ import {
   IconX,
 } from '@tabler/icons-react'
 import clsx from 'clsx'
-import { type FC, useCallback, useEffect, useRef, useState } from 'react'
+import { type FC, memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { isCompactSkillScriptResult } from '@shared/skills/tool-result'
 
 import { ChatboxAIErrorMessage } from '@/components/common/ChatboxAIErrorMessage'
 import { ScalableIcon } from '@/components/common/ScalableIcon'
@@ -434,9 +435,90 @@ const ParseLinkUI: FC<{ part: MessageToolCallPart }> = ({ part }) => {
   )
 }
 
+// ─── Skill Tools (run_ai_bin / run_skill_script / load_skill) ───────
+
+const SKILL_TOOL_NAMES = new Set(['run_ai_bin', 'run_skill_script', 'load_skill'])
+
+function formatSkillToolSummary(part: MessageToolCallPart): string {
+  const args = part.args as Record<string, unknown> | undefined
+  if (part.toolName === 'run_ai_bin') {
+    return String(args?.bin_name ?? 'ai_bin')
+  }
+  if (part.toolName === 'run_skill_script') {
+    return `${args?.skill_name ?? 'skill'}/${args?.script_name ?? 'script'}`
+  }
+  if (part.toolName === 'load_skill') {
+    return String(args?.name ?? 'skill')
+  }
+  return part.toolName
+}
+
+const SkillToolCallUI: FC<{ part: MessageToolCallPart }> = memo(({ part }) => {
+  const { t } = useTranslation()
+  const isError = part.state === 'error'
+  const [expanded, setExpanded] = useAutoExpandOnError(isError)
+  const summary = formatSkillToolSummary(part)
+  const compact = isCompactSkillScriptResult(part.result) ? part.result : null
+
+  const previewText = useMemo(() => {
+    if (!compact) {
+      return ''
+    }
+    const chunks: string[] = []
+    if (compact.stdoutPreview) chunks.push(compact.stdoutPreview)
+    if (compact.stderrPreview) chunks.push(compact.stderrPreview)
+    return chunks.join('\n')
+  }, [compact])
+
+  return (
+    <Stack gap={6} mb="xs">
+      <ToolCallPill
+        part={part}
+        summary={summary}
+        onClick={() => setExpanded((prev) => !prev)}
+        expanded={expanded}
+      />
+      {expanded && (
+        <Box
+          ml={4}
+          pl="sm"
+          style={{
+            borderLeft: `2px solid ${isError ? 'var(--chatbox-tint-error)' : 'var(--chatbox-tint-success)'}`,
+          }}
+        >
+          <Stack gap="xs">
+            {compact && (
+              <>
+                <Text size="xs" c="chatbox-tertiary">
+                  {t('exitCode')}: {compact.exitCode ?? '—'}
+                  {compact.truncated ? ` · ${t('truncated')}` : ''}
+                  {compact.logPath ? ` · ${compact.logPath}` : ''}
+                </Text>
+                {previewText ? (
+                  <Code block style={{ maxHeight: 320, overflow: 'auto' }}>
+                    {previewText}
+                  </Code>
+                ) : null}
+              </>
+            )}
+            {isError ? <ToolCallErrorDetails part={part} /> : null}
+            {!compact && part.result ? (
+              <Code block style={{ maxHeight: 320, overflow: 'auto' }}>
+                {JSON.stringify(part.result, null, 2)}
+              </Code>
+            ) : null}
+          </Stack>
+        </Box>
+      )}
+    </Stack>
+  )
+})
+
+SkillToolCallUI.displayName = 'SkillToolCallUI'
+
 // ─── General Tool Call ──────────────────────────────────────────────
 
-const GeneralToolCallUI: FC<{ part: MessageToolCallPart }> = ({ part }) => {
+const GeneralToolCallUI: FC<{ part: MessageToolCallPart }> = memo(({ part }) => {
   const { t } = useTranslation()
   const isError = part.state === 'error'
   const [expanded, setExpanded] = useAutoExpandOnError(isError)
@@ -444,7 +526,7 @@ const GeneralToolCallUI: FC<{ part: MessageToolCallPart }> = ({ part }) => {
   return (
     <Stack gap={6} mb="xs">
       <ToolCallPill part={part} onClick={() => setExpanded((prev) => !prev)} expanded={expanded} />
-      <Collapse in={expanded}>
+      {expanded && (
         <Box
           ml={4}
           pl="sm"
@@ -472,28 +554,37 @@ const GeneralToolCallUI: FC<{ part: MessageToolCallPart }> = ({ part }) => {
                   <Text size="xs" c="chatbox-tertiary" fw={500} mb={2}>
                     {t('Result')}
                   </Text>
-                  <Code block>{JSON.stringify(part.result, null, 2)}</Code>
+                  <Code block style={{ maxHeight: 320, overflow: 'auto' }}>
+                    {JSON.stringify(part.result, null, 2)}
+                  </Code>
                 </Box>
               )
             )}
           </Stack>
         </Box>
-      </Collapse>
+      )}
     </Stack>
   )
-}
+})
+
+GeneralToolCallUI.displayName = 'GeneralToolCallUI'
 
 // ─── Entry Point ────────────────────────────────────────────────────
 
-export const ToolCallPartUI: FC<{ part: MessageToolCallPart }> = ({ part }) => {
+export const ToolCallPartUI: FC<{ part: MessageToolCallPart }> = memo(({ part }) => {
   if (part.toolName === 'web_search') {
     return <WebSearchGroupUI parts={[part]} />
   }
   if (part.toolName === 'parse_link') {
     return <ParseLinkUI part={part} />
   }
+  if (SKILL_TOOL_NAMES.has(part.toolName)) {
+    return <SkillToolCallUI part={part} />
+  }
   return <GeneralToolCallUI part={part} />
-}
+})
+
+ToolCallPartUI.displayName = 'ToolCallPartUI'
 
 // ─── Reasoning / Thinking (Minimal Inline) ──────────────────────────
 

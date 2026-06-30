@@ -101,6 +101,17 @@ export interface SkillRunAiBinParams {
   runtime: SkillRuntimeSettings
 }
 
+/** Compact summary returned to model/UI after spill to workspace log. */
+export interface CompactSkillScriptResult {
+  success: boolean
+  exitCode: number | null
+  stdoutPreview: string
+  stderrPreview: string
+  logPath?: string
+  truncated: boolean
+  totalBytes: number
+}
+
 export interface SkillRuntimeSettings {
   enabledSkillNames: string[]
   allowSkillNames: string[]
@@ -116,6 +127,8 @@ export interface SkillRuntimeSettings {
   aiEnvSkillsEnabled: boolean
   envShPath: string
   revisionAuthor: string
+  toolLogEnabled: boolean
+  toolResultPreviewChars: number
   timeoutMs: number
   maxOutputBytes: number
 }
@@ -140,6 +153,8 @@ export const SkillSettingsSchema = z.object({
   envShPath: z.string().default(''),
   /** Default author for Word track changes (--author). */
   revisionAuthor: z.string().default('Chatbox'),
+  toolLogEnabled: z.boolean().default(true),
+  toolResultPreviewChars: z.number().min(512).max(65_536).default(8192),
   allowBinNames: z.array(z.string()).default([]),
   denyBinNames: z.array(z.string()).default([]),
   timeoutMs: z.number().min(1000).max(300_000).default(120_000),

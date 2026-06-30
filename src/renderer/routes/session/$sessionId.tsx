@@ -11,6 +11,7 @@ import MessageList, { type MessageListRef } from '@/components/chat/MessageList'
 import { ErrorBoundary } from '@/components/common/ErrorBoundary'
 import InputBox from '@/components/InputBox/InputBox'
 import SkillWorkspaceMenu from '@/components/skills/SkillWorkspaceMenu'
+import { SkillExecutionIndicator } from '@/components/skills/SkillExecutionIndicator'
 import Header from '@/components/layout/Header'
 import Page from '@/components/layout/Page'
 import { useProviders } from '@/hooks/useProviders'
@@ -239,7 +240,8 @@ function RouteComponent() {
 
         {/* <ScrollButtons /> */}
         {featureFlags.skills && (
-          <Flex justify="flex-start" px="sm" pb="xs">
+          <Flex direction="column" px="sm" pb="xs" gap={4}>
+            <SkillExecutionIndicator sessionId={currentSession.id} />
             <SkillWorkspaceMenu
               workspaceDir={currentSession.skillWorkspaceDir}
               onSelect={(path) => void onSelectSkillWorkspace(path)}

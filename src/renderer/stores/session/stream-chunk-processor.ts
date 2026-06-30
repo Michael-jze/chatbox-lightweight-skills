@@ -86,7 +86,10 @@ export async function processStreamChunk(
         args,
       }
       contentParts.push(toolCallPart)
-      break
+      return {
+        state: { contentParts, currentTextPart, currentReasoningPart, usage, finishReason },
+        skipUpdate: true,
+      }
     }
     case 'tool-result': {
       const existing = contentParts.find((part) => part.type === 'tool-call' && part.toolCallId === chunk.toolCallId) as

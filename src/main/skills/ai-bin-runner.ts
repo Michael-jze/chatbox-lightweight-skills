@@ -1,4 +1,5 @@
 import type { SkillRunAiBinParams, SkillScriptResult } from '@shared/types/skills'
+import type { CompactSkillScriptResult } from '@shared/types/skills'
 import { isBinAllowed } from '@shared/skills/policy'
 import { isValidAiBinName, resolveAiEnvBinsDir, resolveAiEnvRoot } from '@shared/skills/ai-env'
 import { spawn } from 'child_process'
@@ -7,6 +8,7 @@ import os from 'os'
 import path from 'path'
 import { getLogger } from '../util'
 import { ensureSessionSandbox } from './runtime'
+import { spillAndCompactSkillResult } from './tool-result-spill'
 
 const log = getLogger('skills:ai-bin-runner')
 
@@ -26,37 +28,58 @@ function validateArgs(args: string[] | undefined): string[] | { error: string } 
   return list
 }
 
-export async function runAiBin(params: SkillRunAiBinParams): Promise<SkillScriptResult> {
+function toRawResult(partial: Partial<SkillScriptResult> & { success: boolean }): SkillScriptResult {
+  return {
+    success: partial.success,
+    stdout: partial.stdout ?? '',
+    stderr: partial.stderr ?? '',
+    exitCode: partial.exitCode ?? null,
+  }
+}
+
+export async function runAiBin(params: SkillRunAiBinParams): Promise<CompactSkillScriptResult> {
   const { sessionId, workspaceDir, binName, runtime } = params
   const homeDir = os.homedir()
 
+  const spillOptions = {
+    workspaceDir,
+    logPrefix: binName,
+    previewChars: runtime.toolResultPreviewChars ?? 8192,
+    toolLogEnabled: runtime.toolLogEnabled ?? true,
+  }
+
   if (!isBinAllowed({ binName, settings: runtime })) {
-    return {
-      success: false,
-      stdout: '',
-      stderr: `Bin "${binName}" is not allowed by policy.`,
-      exitCode: null,
-    }
+    return spillAndCompactSkillResult(
+      toRawResult({
+        success: false,
+        stderr: `Bin "${binName}" is not allowed by policy.`,
+      }),
+      spillOptions
+    )
   }
 
   if (!isValidAiBinName(binName)) {
-    return { success: false, stdout: '', stderr: 'Invalid ai_bin name', exitCode: null }
+    return spillAndCompactSkillResult(
+      toRawResult({ success: false, stderr: 'Invalid ai_bin name' }),
+      spillOptions
+    )
   }
 
   const aiEnvRoot = resolveAiEnvRoot(runtime.aiEnvRoot, homeDir)
   const binPath = path.join(resolveAiEnvBinsDir(runtime.aiEnvRoot, homeDir), binName)
   if (!fs.existsSync(binPath)) {
-    return {
-      success: false,
-      stdout: '',
-      stderr: `Bin not found: ${binPath} (AI_ENV_ROOT=${aiEnvRoot})`,
-      exitCode: null,
-    }
+    return spillAndCompactSkillResult(
+      toRawResult({
+        success: false,
+        stderr: `Bin not found: ${binPath} (AI_ENV_ROOT=${aiEnvRoot})`,
+      }),
+      spillOptions
+    )
   }
 
   const validatedArgs = validateArgs(params.args)
   if ('error' in validatedArgs) {
-    return { success: false, stdout: '', stderr: validatedArgs.error, exitCode: null }
+    return spillAndCompactSkillResult(toRawResult({ success: false, stderr: validatedArgs.error }), spillOptions)
   }
 
   const sandboxDir = ensureSessionSandbox(sessionId, workspaceDir)
@@ -64,7 +87,7 @@ export async function runAiBin(params: SkillRunAiBinParams): Promise<SkillScript
   const timeoutMs = runtime.timeoutMs
   const maxOutputBytes = runtime.maxOutputBytes
 
-  return new Promise((resolve) => {
+  const rawResult = await new Promise<SkillScriptResult>((resolve) => {
     let stdout = ''
     let stderr = ''
     let settled = false
@@ -126,4 +149,6 @@ export async function runAiBin(params: SkillRunAiBinParams): Promise<SkillScript
       }
     }, timeoutMs)
   })
+
+  return spillAndCompactSkillResult(rawResult, spillOptions)
 }

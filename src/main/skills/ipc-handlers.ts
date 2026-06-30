@@ -1,5 +1,6 @@
-import type { SkillRuntimeSettings } from '@shared/types/skills'
+import { compactSkillScriptResult } from '@shared/skills/tool-result'
 import { expandSkillBodyPlaceholders } from '@shared/skills/ai-env'
+import type { SkillRuntimeSettings } from '@shared/types/skills'
 import { app, dialog, ipcMain, shell } from 'electron'
 import fs from 'fs'
 import path from 'path'
@@ -222,12 +223,12 @@ export function registerSkillsHandlers() {
         return await runSkillScript(getSkillsDir(), params, extraRoots, { aiEnvSkillsRoot })
       } catch (error) {
         log.error(`skills:run-script failed for ${params.skillName}/${params.scriptName}`, error)
-        return {
+        return compactSkillScriptResult({
           success: false,
           stdout: '',
           stderr: error instanceof Error ? error.message : 'Unknown error',
           exitCode: null,
-        }
+        })
       }
     }
   )
@@ -248,12 +249,12 @@ export function registerSkillsHandlers() {
         return await runAiBin(params)
       } catch (error) {
         log.error(`skills:run-ai-bin failed for ${params.binName}`, error)
-        return {
+        return compactSkillScriptResult({
           success: false,
           stdout: '',
           stderr: error instanceof Error ? error.message : 'Unknown error',
           exitCode: null,
-        }
+        })
       }
     }
   )

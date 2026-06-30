@@ -1,7 +1,8 @@
 import type { Session } from '@shared/types'
-import type { SkillRuntimeSettings, SkillScriptResult } from '@shared/types/skills'
+import type { CompactSkillScriptResult, SkillRuntimeSettings } from '@shared/types/skills'
 import { skillsController } from '@/packages/skills/controller'
 import { updateSession } from '@/stores/chatStore'
+import { skillExecutionStore } from '@/stores/skillExecutionStore'
 import { settingsStore } from '@/stores/settingsStore'
 
 export async function ensureSessionSkillWorkspace(session: Pick<Session, 'id' | 'skillWorkspaceDir'>): Promise<string> {
@@ -45,25 +46,41 @@ export async function runAiBinForSession(
     args?: string[]
     runtime: SkillRuntimeSettings
   }
-): Promise<SkillScriptResult> {
+): Promise<CompactSkillScriptResult> {
   const workspaceDir = await ensureSessionSkillWorkspace(session)
-  return skillsController.runAiBin({
-    sessionId: session.id,
-    workspaceDir,
-    binName: params.binName,
-    args: params.args,
-    runtime: params.runtime,
+  skillExecutionStore.getState().setActive(session.id, {
+    label: params.binName,
+    kind: 'ai_bin',
   })
+  try {
+    return await skillsController.runAiBin({
+      sessionId: session.id,
+      workspaceDir,
+      binName: params.binName,
+      args: params.args,
+      runtime: params.runtime,
+    })
+  } finally {
+    skillExecutionStore.getState().setActive(session.id, null)
+  }
 }
 
 export async function runSkillScriptForSession(
   session: Pick<Session, 'id' | 'skillWorkspaceDir'>,
   params: Omit<SkillScriptRunParams, 'sessionId' | 'workspaceDir'>
-): Promise<SkillScriptResult> {
+): Promise<CompactSkillScriptResult> {
   const workspaceDir = await ensureSessionSkillWorkspace(session)
-  return skillsController.runScript({
-    sessionId: session.id,
-    workspaceDir,
-    ...params,
+  skillExecutionStore.getState().setActive(session.id, {
+    label: `${params.skillName}/${params.scriptName}`,
+    kind: 'script',
   })
+  try {
+    return await skillsController.runScript({
+      sessionId: session.id,
+      workspaceDir,
+      ...params,
+    })
+  } finally {
+    skillExecutionStore.getState().setActive(session.id, null)
+  }
 }
