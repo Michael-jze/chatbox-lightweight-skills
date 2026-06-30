@@ -14,7 +14,6 @@ import { useTranslation } from 'react-i18next'
 import { Toaster } from 'sonner'
 import { z } from 'zod'
 import { ScalableIcon } from '@/components/common/ScalableIcon'
-import SettingsKnowledgeBaseRouteComponent from '@/components/knowledge-base/KnowledgeBase'
 import { Modal } from '@/components/layout/Overlay'
 import { getThemeDesign } from '@/hooks/useAppTheme'
 import useNeedRoomForWinControls from '@/hooks/useNeedRoomForWinControls'
@@ -26,7 +25,6 @@ import { RouteComponent as SettingsDocumentParserRouteComponent } from '@/routes
 import { RouteComponent as SettingsGeneralRouteComponent } from '@/routes/settings/general'
 import { RouteComponent as SettingsHotkeysRouteComponent } from '@/routes/settings/hotkeys'
 import { RouteComponent as SettingsIndexRouteComponent } from '@/routes/settings/index'
-import { RouteComponent as SettingsMcpRouteComponent } from '@/routes/settings/mcp'
 import { RouteComponent as SettingsProviderProviderIdRouteComponent } from '@/routes/settings/provider/$providerId'
 import { RouteComponent as SettingsProviderChatboxAiRouteComponent } from '@/routes/settings/provider/chatbox-ai'
 import { RouteComponent as SettingsProviderIndexRouteComponent } from '@/routes/settings/provider/index'
@@ -169,21 +167,9 @@ const SettingsWebSearchRoute = createRoute({
   getParentRoute: () => RootRoute,
 })
 
-const SettingsMcpRoute = createRoute({
-  component: SettingsMcpRouteComponent,
-  path: '/settings/mcp',
-  getParentRoute: () => RootRoute,
-})
-
 const SettingsSkillsRoute = createRoute({
   component: SettingsSkillsRouteComponent,
   path: '/settings/skills',
-  getParentRoute: () => RootRoute,
-})
-
-const SettingsKnowledgeBaseRoute = createRoute({
-  component: SettingsKnowledgeBaseRouteComponent,
-  path: '/settings/knowledge-base',
   getParentRoute: () => RootRoute,
 })
 
@@ -241,9 +227,7 @@ const routeTree = RootRoute.addChildren([
   SettingsGeneralRoute,
   SettingsChatRoute,
   SettingsWebSearchRoute,
-  SettingsMcpRoute,
   SettingsSkillsRoute,
-  SettingsKnowledgeBaseRoute,
   SettingsDocumentParserRoute,
   SettingsHotkeysRoute,
   SettingsDefaultModelsRoute,

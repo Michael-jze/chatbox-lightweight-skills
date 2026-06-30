@@ -7,9 +7,6 @@ type TestSettingsState = {
   licenseDetail?: unknown
   licensePlanName?: string
   hasExpiredLicense?: boolean
-  mcp: {
-    enabledBuiltinServers: string[]
-  }
 }
 
 type AuthState = {
@@ -18,23 +15,9 @@ type AuthState = {
   getTokens: () => { accessToken: string; refreshToken: string } | null
 }
 
-const { remoteMocks, mcpMocks, stateControls, authControls, authSubscribers } = vi.hoisted(() => {
-  type MockSettingsState = {
-    licenseKey?: string
-    licenseActivationMethod?: 'login' | 'manual'
-    licenseInstances?: Record<string, string>
-    licenseDetail?: unknown
-    licensePlanName?: string
-    hasExpiredLicense?: boolean
-    mcp: {
-      enabledBuiltinServers: string[]
-    }
-  }
-  type MockAuthState = {
-    accessToken: string | null
-    refreshToken: string | null
-    getTokens: () => { accessToken: string; refreshToken: string } | null
-  }
+const { stateControls, authControls, authSubscribers } = vi.hoisted(() => {
+  type MockSettingsState = TestSettingsState
+  type MockAuthState = AuthState
   type AuthSubscriber = {
     selector: (state: MockAuthState) => 'signed-in' | 'signed-out'
     listener: (value: 'signed-in' | 'signed-out') => void
@@ -42,15 +25,7 @@ const { remoteMocks, mcpMocks, stateControls, authControls, authSubscribers } = 
   }
 
   const settings = {
-    current: {
-      licenseKey: undefined,
-      licenseActivationMethod: undefined,
-      licenseInstances: undefined,
-      licenseDetail: undefined,
-      licensePlanName: undefined,
-      hasExpiredLicense: undefined,
-      mcp: { enabledBuiltinServers: [] },
-    } as MockSettingsState,
+    current: {} as MockSettingsState,
   }
   const auth: { current: MockAuthState } = {
     current: {
@@ -65,17 +40,11 @@ const { remoteMocks, mcpMocks, stateControls, authControls, authSubscribers } = 
         }
         return null
       },
-    } as MockAuthState,
+    },
   }
   const subscribers: AuthSubscriber[] = []
 
   return {
-    remoteMocks: {
-      invalidateSessionRagConfigCache: vi.fn(),
-    },
-    mcpMocks: {
-      stopServer: vi.fn(() => Promise.resolve()),
-    },
     stateControls: {
       get current() {
         return settings.current
@@ -99,14 +68,6 @@ const { remoteMocks, mcpMocks, stateControls, authControls, authSubscribers } = 
 vi.mock('@sentry/react', () => ({ captureException: vi.fn() }))
 vi.mock('@/analytics/jk', () => ({ trackJkClickEvent: vi.fn() }))
 vi.mock('@/analytics/jk-events', () => ({ JK_EVENTS: {}, JK_PAGE_NAMES: { SETTING_PAGE: 'settings' } }))
-vi.mock('@/packages/mcp/controller', () => ({
-  mcpController: {
-    stopServer: mcpMocks.stopServer,
-  },
-}))
-vi.mock('../packages/remote', () => ({
-  invalidateSessionRagConfigCache: remoteMocks.invalidateSessionRagConfigCache,
-}))
 vi.mock('../platform', () => ({
   default: {
     getInstanceName: vi.fn(() => Promise.resolve('test-instance')),
@@ -118,10 +79,7 @@ vi.mock('./settingsStore', () => ({
     getState: () => stateControls.current,
     setState: (updater: Partial<TestSettingsState> | ((state: TestSettingsState) => Partial<TestSettingsState>)) => {
       const next = typeof updater === 'function' ? updater(stateControls.current as TestSettingsState) : updater
-      stateControls.current = {
-        ...stateControls.current,
-        ...next,
-      }
+      stateControls.current = { ...stateControls.current, ...next }
     },
   },
   useSettingsStore: vi.fn(),
@@ -136,14 +94,12 @@ vi.mock('./authInfoStore', () => ({
       const subscriber = {
         selector,
         listener,
-        current: selector(authControls.current as AuthState),
+        current: selector(authControls.current),
       }
       authSubscribers.push(subscriber)
       return () => {
         const index = authSubscribers.indexOf(subscriber)
-        if (index >= 0) {
-          authSubscribers.splice(index, 1)
-        }
+        if (index >= 0) authSubscribers.splice(index, 1)
       }
     },
   },
@@ -151,29 +107,15 @@ vi.mock('./authInfoStore', () => ({
 
 import { initLoginLicenseStateReconciliation, reconcileLoginLicenseState } from './premiumActions'
 
-function resetSettings(overrides: Partial<TestSettingsState>) {
-  stateControls.current = {
-    licenseKey: undefined,
-    licenseActivationMethod: undefined,
-    licenseInstances: undefined,
-    licenseDetail: undefined,
-    licensePlanName: undefined,
-    hasExpiredLicense: undefined,
-    mcp: { enabledBuiltinServers: [] },
-    ...overrides,
-  }
+function resetSettings(next: TestSettingsState) {
+  stateControls.current = next
 }
 
 function setAuthTokens(accessToken: string | null, refreshToken: string | null) {
   authControls.current = {
+    ...authControls.current,
     accessToken,
     refreshToken,
-    getTokens() {
-      if (accessToken && refreshToken) {
-        return { accessToken, refreshToken }
-      }
-      return null
-    },
   }
   for (const subscriber of authSubscribers) {
     const next = subscriber.selector(authControls.current)
@@ -203,7 +145,6 @@ describe('login license state reconciliation', () => {
       licenseDetail: { name: 'Pro' },
       licensePlanName: 'Pro',
       hasExpiredLicense: true,
-      mcp: { enabledBuiltinServers: ['server-a'] },
     })
 
     expect(reconcileLoginLicenseState()).toBe(true)
@@ -214,9 +155,6 @@ describe('login license state reconciliation', () => {
     expect(stateControls.current.licenseDetail).toBeUndefined()
     expect(stateControls.current.licensePlanName).toBeUndefined()
     expect(stateControls.current.hasExpiredLicense).toBe(false)
-    expect(stateControls.current.mcp.enabledBuiltinServers).toEqual([])
-    expect(mcpMocks.stopServer).toHaveBeenCalledWith('server-a')
-    expect(remoteMocks.invalidateSessionRagConfigCache).toHaveBeenCalled()
   })
 
   it('keeps login license state when auth tokens are present', () => {
@@ -225,14 +163,10 @@ describe('login license state reconciliation', () => {
       licenseKey: 'login-license',
       licenseActivationMethod: 'login',
       licenseInstances: { 'login-license': 'instance-id' },
-      mcp: { enabledBuiltinServers: ['server-a'] },
     })
 
     expect(reconcileLoginLicenseState()).toBe(false)
-
     expect(stateControls.current.licenseKey).toBe('login-license')
-    expect(mcpMocks.stopServer).not.toHaveBeenCalled()
-    expect(remoteMocks.invalidateSessionRagConfigCache).not.toHaveBeenCalled()
   })
 
   it('does not clear manual license state when auth tokens are missing', () => {
@@ -240,11 +174,9 @@ describe('login license state reconciliation', () => {
       licenseKey: 'manual-license',
       licenseActivationMethod: 'manual',
       licenseInstances: { 'manual-license': 'instance-id' },
-      mcp: { enabledBuiltinServers: [] },
     })
 
     expect(reconcileLoginLicenseState()).toBe(false)
-
     expect(stateControls.current.licenseKey).toBe('manual-license')
     expect(stateControls.current.licenseActivationMethod).toBe('manual')
   })
@@ -255,7 +187,6 @@ describe('login license state reconciliation', () => {
       licenseKey: 'login-license',
       licenseActivationMethod: 'login',
       licenseInstances: { 'login-license': 'instance-id' },
-      mcp: { enabledBuiltinServers: [] },
     })
 
     const unsubscribe = initLoginLicenseStateReconciliation()

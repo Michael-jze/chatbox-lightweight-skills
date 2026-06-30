@@ -17,19 +17,14 @@ function getSkillTranslationKey(skill: SkillInfo): string {
 
 export function useSkillTranslation(skills: SkillInfo[]): UseSkillTranslationResult {
   const language = useLanguage()
-  const translationEnabled = useSettingsStore((state) => state.skills?.translationEnabled ?? true)
+  const translationEnabled = true
   const [translatedSkills, setTranslatedSkills] = useState<SkillInfo[]>(skills)
   const [translatedNameMap, setTranslatedNameMap] = useState<Map<string, string>>(new Map())
   const [isTranslating, setIsTranslating] = useState(false)
   const cacheRef = useRef<Map<string, string>>(new Map())
 
   const toggleTranslation = () => {
-    settingsStore.setState((state) => ({
-      skills: {
-        ...state.skills,
-        translationEnabled: !state.skills?.translationEnabled,
-      },
-    }))
+    // Translation toggle removed in lightweight skills build
   }
 
   useEffect(() => {

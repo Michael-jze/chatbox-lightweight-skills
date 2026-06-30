@@ -132,24 +132,23 @@ export function settings(): Settings {
         queritMaxResults: 5,
         queritTimeRange: 'none',
       },
-      knowledgeBase: {
-        models: {
-          embedding: undefined,
-          rerank: undefined,
-        },
-      },
       // documentParser is NOT set here - it uses platform-specific defaults
-      // Desktop: 'local', Mobile/Web: 'none'
-      // See settingsStore.ts for the platform-aware initialization logic
       documentParser: undefined,
-    },
-    mcp: {
-      servers: [],
-      enabledBuiltinServers: [],
     },
     skills: {
       enabledSkillNames: [],
-      translationEnabled: true,
+      allowSkillNames: [],
+      denySkillNames: [],
+      allowScriptNames: [],
+      denyScriptNames: [],
+      pythonInterpreter: 'python3',
+      nodeInterpreter: 'node',
+      envFilePath: '',
+      timeoutMs: 30_000,
+      maxOutputBytes: 1024 * 1024,
+      sandboxParentDir: '',
+      globalMemoryEnabled: true,
+      globalMemoryPath: '',
     },
   }
 }

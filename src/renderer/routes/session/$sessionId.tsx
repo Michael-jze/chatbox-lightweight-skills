@@ -1,5 +1,5 @@
 import NiceModal from '@ebay/nice-modal-react'
-import { Stack, Box, Button } from '@mantine/core'
+import { Stack, Box, Button, Flex } from '@mantine/core'
 import type { Message, ModelProvider } from '@shared/types'
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { useCallback, useEffect, useMemo, useRef } from 'react'
@@ -10,6 +10,7 @@ import { ChatboxWelcomeCard } from '@/components/common/ChatboxWelcomeCard'
 import MessageList, { type MessageListRef } from '@/components/chat/MessageList'
 import { ErrorBoundary } from '@/components/common/ErrorBoundary'
 import InputBox from '@/components/InputBox/InputBox'
+import SkillWorkspaceMenu from '@/components/skills/SkillWorkspaceMenu'
 import Header from '@/components/layout/Header'
 import Page from '@/components/layout/Page'
 import { useProviders } from '@/hooks/useProviders'
@@ -18,12 +19,15 @@ import ThreadHistoryDrawer from '@/components/session/ThreadHistoryDrawer'
 import * as remote from '@/packages/remote'
 import { useAuthInfoStore } from '@/stores/authInfoStore'
 import { updateSession as updateSessionStore, useSession } from '@/stores/chatStore'
+import { settingsStore } from '@/stores/settingsStore'
 import { lastUsedModelStore } from '@/stores/lastUsedModelStore'
 import * as scrollActions from '@/stores/scrollActions'
 import { modifyMessage, removeCurrentThread, startNewThread, submitNewUserMessage } from '@/stores/sessionActions'
+import { skillsController } from '@/packages/skills/controller'
 import { getAllMessageList } from '@/stores/sessionHelpers'
 import { useSettingsStore } from '@/stores/settingsStore'
 import { useUIStore } from '@/stores/uiStore'
+import { featureFlags } from '@/utils/feature-flags'
 import { getHomeWelcomeCardMode } from '@/utils/homeWelcomeCard'
 
 export const Route = createFileRoute('/session/$sessionId')({
@@ -191,6 +195,26 @@ function RouteComponent() {
     }
   }, [currentSession?.settings?.provider, currentSession?.settings?.modelId])
 
+  const skillWorkspaceLocked = useMemo(
+    () => Boolean(currentSession?.messages.some((message) => message.role !== 'system')),
+    [currentSession?.messages]
+  )
+
+  const onSelectSkillWorkspace = useCallback(
+    async (path: string) => {
+      if (!currentSession || skillWorkspaceLocked) {
+        return
+      }
+      await skillsController.ensureWorkspace({
+        sessionId: currentSession.id,
+        skillWorkspaceDir: path,
+        sandboxParentDir: settingsStore.getState().skills.sandboxParentDir,
+      })
+      await updateSessionStore(currentSession.id, { skillWorkspaceDir: path })
+    },
+    [currentSession, skillWorkspaceLocked]
+  )
+
   return currentSession ? (
     <div className="flex flex-col h-full">
       <Header session={currentSession} />
@@ -214,6 +238,15 @@ function RouteComponent() {
         )}
 
         {/* <ScrollButtons /> */}
+        {featureFlags.skills && (
+          <Flex justify="flex-start" px="sm" pb="xs">
+            <SkillWorkspaceMenu
+              workspaceDir={currentSession.skillWorkspaceDir}
+              onSelect={(path) => void onSelectSkillWorkspace(path)}
+              disabled={skillWorkspaceLocked}
+            />
+          </Flex>
+        )}
         <ErrorBoundary name="session-inputbox">
           <InputBox
             key={`input-box${currentSession.id}`}

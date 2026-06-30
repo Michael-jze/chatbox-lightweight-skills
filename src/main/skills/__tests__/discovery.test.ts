@@ -1,6 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { discoverSkills } from '../discovery'
 
+vi.mock('../builtin-path', () => ({
+  getBuiltinSkillsRoots: () => [],
+}))
+
 vi.mock('fs', () => ({
   default: {
     existsSync: vi.fn(),

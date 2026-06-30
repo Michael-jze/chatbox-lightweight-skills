@@ -18,7 +18,7 @@ export function toastError(message: ErrorToastMessage, options?: ErrorToastOptio
   }
 
   const state = settingsStore.getState()
-  if (state.skills?.translationEnabled === false || state.language === 'en') {
+  if (state.language === 'en') {
     return
   }
 

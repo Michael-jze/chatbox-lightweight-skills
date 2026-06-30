@@ -43,7 +43,6 @@ import './setup/jk_analytics_init'
 // 引入保护代码
 import './setup/protect'
 import { QueryClientProvider } from '@tanstack/react-query'
-import { initSessionAttachmentRagMaintenance } from './setup/session_attachment_rag_maintenance'
 import { initLastUsedModelStore } from './stores/lastUsedModelStore'
 import { initOnboardingStore } from './stores/onboardingStore'
 import { initLoginLicenseStateReconciliation } from './stores/premiumActions'
@@ -77,11 +76,10 @@ async function initializeApp() {
     Sentry.captureException(e as Error)
   }
 
+  // 启动skills目录清理在 main 进程 registerSkillsHandlers 中完成
+
   // 最后执行 storage 清理，清理不 block 进入UI
   import('./setup/storage_clear')
-
-  // 启动mcp服务器
-  import('./setup/mcp_bootstrap')
 }
 
 // ==========渲染节点==============
@@ -158,7 +156,6 @@ initializeApp()
     // Initialize auto-updater event listeners (desktop only, idempotent)
     if (platform.type === 'desktop') {
       initUpdateListeners()
-      initSessionAttachmentRagMaintenance()
     }
     // Cleanup is intentionally not captured — listeners persist for the app lifetime
 

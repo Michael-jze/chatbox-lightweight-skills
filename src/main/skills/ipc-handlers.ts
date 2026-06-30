@@ -1,25 +1,46 @@
-import type { MarketplaceSkill } from '@shared/types/skills'
-import { spawn } from 'child_process'
-import { app, ipcMain, shell } from 'electron'
+import type { SkillRuntimeSettings } from '@shared/types/skills'
+import { app, dialog, ipcMain, shell } from 'electron'
 import fs from 'fs'
+import os from 'os'
 import path from 'path'
 import { getLogger } from '../util'
 import { discoverSkills } from './discovery'
-import { detectSkillsInRepo } from './github-fetcher'
-import { checkForUpdates, deleteSkill, installSkillFromGitHub, installSkillFromMarketplace } from './installer'
+import {
+  ensureGlobalMemoryFile,
+  readGlobalMemory,
+  resolveGlobalMemoryPath,
+  writeGlobalMemory,
+} from './global-memory'
 import { parseSkillFile } from './parser'
+import { cleanupExpiredSandboxes, cleanupSessionSandbox, ensureSessionSandbox, resolveWorkspaceDir } from './runtime'
+import { runSkillScript } from './runner'
 import { isValidSkillName } from './validation'
 
 const log = getLogger('skills:ipc-handlers')
+
 function getSkillsDir(): string {
   return path.join(app.getPath('userData'), 'skills')
 }
 
+function getExtraSkillRoots(): string[] {
+  const home = os.homedir()
+  const cwd = process.cwd()
+  const candidates = [
+    path.join(cwd, '.agents', 'skills'),
+    path.join(cwd, '.cursor', 'skills'),
+    path.join(home, '.agents', 'skills'),
+    path.join(home, '.cursor', 'skills'),
+  ]
+  return candidates.filter((p) => fs.existsSync(p))
+}
+
 export function registerSkillsHandlers() {
+  cleanupExpiredSandboxes()
+
   ipcMain.handle('skills:discover', async () => {
     try {
       const skillsDir = getSkillsDir()
-      return discoverSkills(skillsDir)
+      return discoverSkills(skillsDir, getExtraSkillRoots())
     } catch (error) {
       log.error('skills:discover failed', error)
       throw error
@@ -35,23 +56,18 @@ export function registerSkillsHandlers() {
         return null
       }
 
-      const skillsDir = getSkillsDir()
-      if (!fs.existsSync(skillsDir)) {
+      const all = discoverSkills(getSkillsDir(), getExtraSkillRoots())
+      const match = all.find((s) => s.name === name)
+      if (!match) {
         return null
       }
-      const entries = fs.readdirSync(skillsDir, { withFileTypes: true })
-      for (const entry of entries) {
-        if (!entry.isDirectory()) continue
-        const skillMdPath = path.join(skillsDir, entry.name, 'SKILL.md')
-        if (!fs.existsSync(skillMdPath)) continue
 
-        const parsed = parseSkillFile(skillMdPath, entry.name)
-        if (parsed && parsed.metadata.name === name) {
-          return { body: parsed.body, metadata: parsed.metadata }
-        }
+      const skillMdPath = path.join(match.path, 'SKILL.md')
+      const parsed = parseSkillFile(skillMdPath, path.basename(match.path))
+      if (!parsed || parsed.metadata.name !== name) {
+        return null
       }
-
-      return null
+      return { body: parsed.body, metadata: parsed.metadata }
     } catch (error) {
       log.error(`skills:load failed for name=${name}`, error)
       throw error
@@ -76,106 +92,97 @@ export function registerSkillsHandlers() {
     }
   })
 
+  ipcMain.handle('skills:open-env-file-dialog', async () => {
+    const result = await dialog.showOpenDialog({
+      properties: ['openFile'],
+      filters: [{ name: 'JSON', extensions: ['json'] }],
+      title: 'Select env.json',
+    })
+    if (result.canceled || result.filePaths.length === 0) {
+      return { canceled: true }
+    }
+    return { canceled: false, path: result.filePaths[0] }
+  })
+
+  ipcMain.handle('skills:read-global-memory', async (_event, customPath?: string) => {
+    try {
+      return readGlobalMemory(customPath)
+    } catch (error) {
+      log.error('skills:read-global-memory failed', error)
+      throw error
+    }
+  })
+
+  ipcMain.handle('skills:write-global-memory', async (_event, params: { content: string; path?: string }) => {
+    try {
+      return writeGlobalMemory(params.content, params.path)
+    } catch (error) {
+      log.error('skills:write-global-memory failed', error)
+      throw error
+    }
+  })
+
+  ipcMain.handle('skills:get-global-memory-path', async (_event, customPath?: string) => {
+    return resolveGlobalMemoryPath(customPath)
+  })
+
+  ipcMain.handle('skills:ensure-global-memory', async (_event, customPath?: string) => {
+    return { path: ensureGlobalMemoryFile(customPath) }
+  })
+
+  ipcMain.handle('skills:open-global-memory', async (_event, customPath?: string) => {
+    try {
+      const filePath = ensureGlobalMemoryFile(customPath)
+      await shell.openPath(filePath)
+      return { success: true, path: filePath }
+    } catch (error) {
+      log.error('skills:open-global-memory failed', error)
+      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' }
+    }
+  })
+
   ipcMain.handle(
-    'skills:execute-script',
+    'skills:ensure-workspace',
     async (
       _event,
-      params: { skillName: string; scriptName: string; args?: string[] }
-    ): Promise<{ success: boolean; stdout: string; stderr: string; exitCode: number | null }> => {
-      const { skillName, scriptName, args = [] } = params
-
+      params: {
+        sessionId: string
+        skillWorkspaceDir?: string
+        sandboxParentDir?: string
+      }
+    ) => {
       try {
-        if (!skillName || !scriptName) {
-          throw new Error('Skill name and script name are required')
-        }
-
-        if (skillName.includes('..') || skillName.includes('/') || skillName.includes('\\')) {
-          throw new Error('Invalid skill name: path traversal not allowed')
-        }
-
-        if (scriptName.includes('..') || scriptName.includes('/') || scriptName.includes('\\')) {
-          throw new Error('Invalid script name: path traversal not allowed')
-        }
-
-        const skillsDir = getSkillsDir()
-        const scriptPath = path.join(skillsDir, skillName, 'scripts', scriptName)
-        if (!fs.existsSync(scriptPath)) {
-          throw new Error(`Script not found: ${scriptName}`)
-        }
-        const resolvedSkillsDir = fs.realpathSync(skillsDir)
-        const resolvedScriptPath = fs.realpathSync(scriptPath)
-        if (!resolvedScriptPath.startsWith(`${resolvedSkillsDir}${path.sep}`)) {
-          throw new Error('Script path escapes skills directory')
-        }
-
-        const scriptDir = path.dirname(resolvedScriptPath)
-
-        return await new Promise((resolve) => {
-          const TIMEOUT_MS = 30_000
-          let stdout = ''
-          let stderr = ''
-          let settled = false
-
-          const resolveOnce = (result: {
-            success: boolean
-            stdout: string
-            stderr: string
-            exitCode: number | null
-          }) => {
-            if (settled) {
-              return
-            }
-            settled = true
-            resolve(result)
-          }
-
-          const child = spawn(resolvedScriptPath, args, {
-            cwd: scriptDir,
-            timeout: TIMEOUT_MS,
-            stdio: ['ignore', 'pipe', 'pipe'],
-            env: {
-              PATH: process.env.PATH,
-              HOME: process.env.HOME,
-              LANG: process.env.LANG,
-              TERM: process.env.TERM,
-              SKILL_DIR: path.join(skillsDir, skillName),
-            },
-          })
-
-          const MAX_OUTPUT_BYTES = 1024 * 1024 // 1MB
-          child.stdout.on('data', (data: Buffer) => {
-            if (stdout.length < MAX_OUTPUT_BYTES) stdout += data.toString()
-          })
-
-          child.stderr.on('data', (data: Buffer) => {
-            if (stderr.length < MAX_OUTPUT_BYTES) stderr += data.toString()
-          })
-
-          child.on('error', (error) => {
-            log.error(`skills:execute-script spawn error for ${skillName}/${scriptName}`, error)
-            resolveOnce({ success: false, stdout, stderr: stderr || error.message, exitCode: null })
-          })
-
-          child.on('close', (code, signal) => {
-            if (signal === 'SIGTERM') {
-              resolveOnce({ success: false, stdout, stderr: stderr || 'Script timed out', exitCode: null })
-            } else {
-              resolveOnce({ success: code === 0, stdout, stderr, exitCode: code })
-            }
-          })
-
-          setTimeout(() => {
-            if (settled) {
-              return
-            }
-            if (!child.killed) {
-              child.kill('SIGTERM')
-              resolveOnce({ success: false, stdout, stderr: stderr || 'Script timed out (30s)', exitCode: null })
-            }
-          }, TIMEOUT_MS)
+        const workspaceDir = resolveWorkspaceDir({
+          sessionId: params.sessionId,
+          workspaceDir: params.skillWorkspaceDir,
+          sandboxParentDir: params.sandboxParentDir,
         })
+        ensureSessionSandbox(params.sessionId, workspaceDir)
+        return { workspaceDir }
       } catch (error) {
-        log.error(`skills:execute-script failed for ${skillName}/${scriptName}`, error)
+        log.error(`skills:ensure-workspace failed for ${params.sessionId}`, error)
+        throw error
+      }
+    }
+  )
+
+  ipcMain.handle(
+    'skills:run-script',
+    async (
+      _event,
+      params: {
+        sessionId: string
+        workspaceDir: string
+        skillName: string
+        scriptName: string
+        args?: string[]
+        runtime: SkillRuntimeSettings
+      }
+    ) => {
+      try {
+        return await runSkillScript(getSkillsDir(), params, getExtraSkillRoots())
+      } catch (error) {
+        log.error(`skills:run-script failed for ${params.skillName}/${params.scriptName}`, error)
         return {
           success: false,
           stdout: '',
@@ -186,72 +193,22 @@ export function registerSkillsHandlers() {
     }
   )
 
-  ipcMain.handle('skills:scan-repo', async (_event, owner: string, repo: string) => {
-    try {
-      return await detectSkillsInRepo(owner, repo)
-    } catch (error) {
-      log.error(`skills:scan-repo failed for ${owner}/${repo}`, error)
-      throw error
-    }
-  })
-
-  ipcMain.handle('skills:install', async (_event, params: { owner: string; repo: string; skillPath: string }) => {
-    try {
-      return await installSkillFromGitHub(params.owner, params.repo, params.skillPath)
-    } catch (error) {
-      log.error('skills:install failed', error)
-      throw error
-    }
-  })
-
-  ipcMain.handle('skills:install-marketplace', async (_event, skill: MarketplaceSkill) => {
-    try {
-      return await installSkillFromMarketplace(skill)
-    } catch (error) {
-      log.error('skills:install-marketplace failed', error)
-      throw error
-    }
-  })
-
-  ipcMain.handle('skills:delete', async (_event, skillName: string) => {
-    try {
-      return await deleteSkill(skillName)
-    } catch (error) {
-      log.error(`skills:delete failed for "${skillName}"`, error)
-      throw error
-    }
-  })
-
-  ipcMain.handle('skills:check-update', async (_event, skillName: string) => {
-    try {
-      return await checkForUpdates(skillName)
-    } catch (error) {
-      log.error(`skills:check-update failed for "${skillName}"`, error)
-      throw error
-    }
-  })
-
-  ipcMain.handle('skills:check-updates-batch', async () => {
-    try {
-      const skillsDir = getSkillsDir()
-      const results: Record<string, { hasUpdate: boolean; error?: string }> = {}
-
-      if (!fs.existsSync(skillsDir)) return results
-
-      const entries = fs.readdirSync(skillsDir, { withFileTypes: true })
-      for (const entry of entries) {
-        if (!entry.isDirectory()) continue
-        const sourcePath = path.join(skillsDir, entry.name, 'source.json')
-        if (!fs.existsSync(sourcePath)) continue
-
-        const result = await checkForUpdates(entry.name)
-        results[entry.name] = { hasUpdate: result.hasUpdate, error: result.error }
+  ipcMain.handle(
+    'skills:cleanup-session',
+    async (
+      _event,
+      params: {
+        sessionId: string
+        workspaceDir?: string
       }
-
-      return results
-    } catch (error) {
-      log.error('skills:check-updates-batch failed', error)
-      throw error
+    ) => {
+      try {
+        cleanupSessionSandbox(params.sessionId, params.workspaceDir)
+        return { success: true }
+      } catch (error) {
+        log.error(`skills:cleanup-session failed for ${params.sessionId}`, error)
+        return { success: false }
+      }
     }
-  })
+  )
 }

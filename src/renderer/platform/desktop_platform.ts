@@ -13,8 +13,6 @@ import { IndexedDBTaskSessionStorage, type TaskSessionStorage } from '@/storage/
 import { rememberFileNativePath } from '@/utils/file-native-path'
 import { getOS } from '../packages/navigator'
 import type { Platform, PlatformType } from './interfaces'
-import DesktopKnowledgeBaseController from './knowledge-base/desktop-controller'
-import DesktopSessionAttachmentRagController from './session-attachment-rag/desktop-controller'
 import WebExporter from './web_exporter'
 import { parseTextFileLocally } from './web_platform_utils'
 
@@ -27,8 +25,6 @@ export default class DesktopPlatform implements Platform {
 
   public exporter = new WebExporter()
 
-  private _kbController?: DesktopKnowledgeBaseController
-  private _sessionAttachmentRagController?: DesktopSessionAttachmentRagController
   private _imageGenerationStorage: ImageGenerationStorage | null = null
   private _taskSessionStorage: TaskSessionStorage | null = null
   private _sessionMetaStorage: SessionMetaStorage | null = null
@@ -312,18 +308,8 @@ export default class DesktopPlatform implements Platform {
     return this.ipc.invoke('switch-theme', theme)
   }
 
-  public getKnowledgeBaseController() {
-    if (!this._kbController) {
-      this._kbController = new DesktopKnowledgeBaseController(this.ipc)
-    }
-    return this._kbController
-  }
-
-  public getSessionAttachmentRagController() {
-    if (!this._sessionAttachmentRagController) {
-      this._sessionAttachmentRagController = new DesktopSessionAttachmentRagController(this.ipc)
-    }
-    return this._sessionAttachmentRagController
+  public async testMineruConnection(_apiToken: string): Promise<{ success: boolean; error?: string }> {
+    return { success: false, error: 'MinerU connection test is not available in this build' }
   }
 
   public getImageGenerationStorage(): ImageGenerationStorage {

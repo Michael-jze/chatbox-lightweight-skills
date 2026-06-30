@@ -280,6 +280,8 @@ export const SessionSchema = z.object({
   threadName: z.string().optional(),
   messageForksHash: z.record(z.string(), MessageForkSchema).optional(),
   compactionPoints: z.array(CompactionPointSchema).optional(),
+  /** Persistent skill script workspace; unchanged across threads in the same session. */
+  skillWorkspaceDir: z.string().optional(),
 })
 
 export const SessionMetaSchema = SessionSchema.pick({

@@ -3,8 +3,6 @@ import type { Config, Language, Settings, ShortcutSetting } from '@shared/types'
 import type { ImageGenerationStorage } from '@/storage/ImageGenerationStorage'
 import type { SessionMetaStorage } from '@/storage/SessionMetaStorage'
 import type { TaskSessionStorage } from '@/storage/TaskSessionStorage'
-import type { KnowledgeBaseController } from './knowledge-base/interface'
-import type { SessionAttachmentRagController } from './session-attachment-rag/interface'
 
 export type PlatformType = 'web' | 'desktop' | 'mobile'
 
@@ -98,8 +96,8 @@ export interface Platform extends Storage {
   setFullscreen(enabled: boolean): Promise<void>
   installUpdate(): Promise<void>
 
-  getKnowledgeBaseController(): KnowledgeBaseController
-  getSessionAttachmentRagController(): SessionAttachmentRagController
+  // MinerU connection test (Desktop only)
+  testMineruConnection?(apiToken: string): Promise<{ success: boolean; error?: string }>
 
   getImageGenerationStorage(): ImageGenerationStorage
 

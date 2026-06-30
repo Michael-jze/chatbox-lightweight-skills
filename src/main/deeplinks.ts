@@ -10,7 +10,7 @@ export function handleDeepLink(mainWindow: BrowserWindow, link: string) {
   // handle `chatbox://mcp/install?server=`
   if (url.hostname === 'mcp' && url.pathname === '/install') {
     const encodedConfig = url.searchParams.get('server') || ''
-    mainWindow.webContents.send('navigate-to', `/settings/mcp?install=${encodeURIComponent(encodedConfig)}`)
+    mainWindow.webContents.send('navigate-to', `/settings/skills`)
   }
 
   // handle `chatbox://provider/import?config=`

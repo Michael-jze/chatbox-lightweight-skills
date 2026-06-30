@@ -1,12 +1,10 @@
 import { ActionIcon, Box, Flex, Indicator, Stack, Text } from '@mantine/core'
 import {
   IconAdjustmentsHorizontal,
-  IconBook,
   IconBox,
   IconCategory,
   IconChevronLeft,
   IconChevronRight,
-  IconCircleDottedLetterM,
   IconFileText,
   IconInfoCircle,
   IconKeyboard,
@@ -48,24 +46,6 @@ const ITEMS = [
     label: 'Web Search',
     icon: <IconWorldWww className="w-full h-full" />,
   },
-  ...(featureFlags.mcp
-    ? [
-        {
-          key: 'mcp',
-          label: 'MCP',
-          icon: <IconCircleDottedLetterM className="w-full h-full" />,
-        },
-      ]
-    : []),
-  ...(featureFlags.knowledgeBase
-    ? [
-        {
-          key: 'knowledge-base',
-          label: 'Knowledge Base',
-          icon: <IconBook className="w-full h-full" />,
-        },
-      ]
-    : []),
   ...(featureFlags.skills
     ? [
         {

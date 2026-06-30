@@ -14,10 +14,8 @@ import platform from '@/platform'
 import storage from '@/storage'
 import { StorageKeyGenerator } from '@/storage/StoreStorage'
 import { featureFlags } from '@/utils/feature-flags'
-import { SESSION_ATTACHMENT_RAG_LOG_PREFIX } from '../../../shared/session-attachment-rag/logging'
 import * as chatStore from '../chatStore'
 import { settingsStore } from '../settingsStore'
-import { uiStore } from '../uiStore'
 import { createAttachmentResolver } from './attachment-resolver'
 import { applyLegacyToolFallback } from './legacy-tool-fallback'
 import { persistStreamingMessage, updateStreamingCache } from './messages'
@@ -33,67 +31,6 @@ import {
 } from './utils'
 
 const log = getLogger('session-orchestration')
-
-async function refreshSessionAttachmentStatuses(messages: Message[]): Promise<Message[]> {
-  if (platform.type !== 'desktop') {
-    return messages
-  }
-
-  const ids = Array.from(
-    new Set(
-      messages.flatMap((message) =>
-        (message.files ?? [])
-          .filter((file) => file.sessionAttachmentId)
-          .map((file) => file.sessionAttachmentId as number)
-      )
-    )
-  )
-
-  if (ids.length === 0) {
-    return messages
-  }
-
-  const controller = platform.getSessionAttachmentRagController()
-  const attachments = await controller.getAttachments(ids)
-  log.debug(
-    `${SESSION_ATTACHMENT_RAG_LOG_PREFIX} Refreshed attachment statuses: count=${attachments.length}, statuses=${attachments
-      .map((attachment) => `${attachment.id}:${attachment.indexStatus ?? attachment.status}`)
-      .join(',')}`
-  )
-  const availabilityMap = new Map(attachments.map((attachment) => [attachment.id, attachment.availability]))
-  const indexStatusMap = new Map(attachments.map((attachment) => [attachment.id, attachment.indexStatus]))
-  const chunkCountMap = new Map(attachments.map((attachment) => [attachment.id, attachment.chunkCount]))
-  const totalChunksMap = new Map(attachments.map((attachment) => [attachment.id, attachment.totalChunks]))
-  const embeddedChunksMap = new Map(attachments.map((attachment) => [attachment.id, attachment.embeddedChunks]))
-  const indexingStageMap = new Map(attachments.map((attachment) => [attachment.id, attachment.indexingStage]))
-
-  return messages.map((message) => {
-    if (!message.files?.length) {
-      return message
-    }
-
-    const files = message.files.map((file) => {
-      if (!file.sessionAttachmentId) {
-        return file
-      }
-      return {
-        ...file,
-        sessionAttachmentAvailability:
-          availabilityMap.get(file.sessionAttachmentId) ?? file.sessionAttachmentAvailability,
-        sessionAttachmentIndexStatus: indexStatusMap.get(file.sessionAttachmentId) ?? file.sessionAttachmentIndexStatus,
-        sessionAttachmentStatus: indexStatusMap.get(file.sessionAttachmentId) ?? file.sessionAttachmentStatus,
-        sessionAttachmentChunkCount: chunkCountMap.get(file.sessionAttachmentId) ?? file.sessionAttachmentChunkCount,
-        sessionAttachmentTotalChunks: totalChunksMap.get(file.sessionAttachmentId) ?? file.sessionAttachmentTotalChunks,
-        sessionAttachmentEmbeddedChunks:
-          embeddedChunksMap.get(file.sessionAttachmentId) ?? file.sessionAttachmentEmbeddedChunks,
-        sessionAttachmentIndexingStage:
-          indexingStageMap.get(file.sessionAttachmentId) ?? file.sessionAttachmentIndexingStage,
-      }
-    })
-
-    return { ...message, files }
-  })
-}
 
 export async function orchestrateGeneration(
   sessionId: string,
@@ -129,12 +66,18 @@ export async function orchestrateGeneration(
   try {
     const dependencies = await createModelDependencies()
     const model = await createModel(settings, dependencies)
-    const sessionKnowledgeBaseMap = uiStore.getState().sessionKnowledgeBaseMap
-    const knowledgeBase = sessionKnowledgeBaseMap[sessionId]
     const webBrowsing = getSessionWebBrowsing(sessionId, settings.provider)
+    const globalSkillSettings = settingsStore.getState().skills
+    const skillRuntime = featureFlags.skills
+      ? {
+          ...globalSkillSettings,
+          globalMemoryEnabled: globalSkillSettings.globalMemoryEnabled,
+          globalMemoryPath: globalSkillSettings.globalMemoryPath,
+        }
+      : undefined
 
     const attachmentResolver = createAttachmentResolver()
-    const messagesForPrompt = await refreshSessionAttachmentStatuses(messages.slice(0, targetMsgIx))
+    const messagesForPrompt = messages.slice(0, targetMsgIx)
     let promptMsgs = await buildContext(messagesForPrompt, {
       attachmentResolver,
       compactionPoints: session.compactionPoints,
@@ -168,7 +111,6 @@ export async function orchestrateGeneration(
     const { promptMsgs: updatedMsgs, fallbackToolCallPart } = await applyLegacyToolFallback({
       model,
       promptMsgs,
-      knowledgeBase,
       webBrowsing,
       signal: controller.signal,
     })
@@ -176,8 +118,10 @@ export async function orchestrateGeneration(
 
     const { tools, instructions } = await buildToolsForSession(model, {
       webBrowsing,
-      knowledgeBase,
       messages: promptMsgs,
+      sessionId,
+      skillRuntime,
+      skillWorkspace: skillRuntime ? { id: sessionId, skillWorkspaceDir: session.skillWorkspaceDir } : undefined,
     })
 
     let injectedMessages = injectModelSystemPrompt(

@@ -1,4 +1,4 @@
-import { isSessionAttachmentRagSupportedFilePath, isTextFilePath } from '@shared/file-extensions'
+import { isTextFilePath } from '@shared/file-extensions'
 import type {
   ExportChatFormat,
   ExportChatScope,
@@ -26,7 +26,6 @@ import { authInfoStore } from '@/stores/authInfoStore'
 import { getMetaStorage } from '@/stores/chatStore'
 import { migrateSession, sortSessions } from '@/utils/session-utils'
 import * as defaults from '../../shared/defaults'
-import { SESSION_ATTACHMENT_RAG_LOG_PREFIX } from '../../shared/session-attachment-rag/logging'
 import { createMessage, type Message, SessionSettingsSchema, TOKEN_CACHE_KEYS } from '../../shared/types'
 import type { AttachmentPreparationResult, PreprocessedFile } from '../types/input-box'
 import { lastUsedModelStore } from './lastUsedModelStore'
@@ -41,22 +40,14 @@ export const SESSION_ATTACHMENT_RAG_REQUIRES_KNOWLEDGE_BASE_ERROR = 'session_att
 export const SESSION_ATTACHMENT_RAG_REQUIRES_TOOL_USE_MODEL_ERROR = 'session_attachment_rag_requires_tool_use_model'
 export const SESSION_ATTACHMENT_RAG_PARSED_CONTENT_TOO_LARGE_ERROR = 'session_attachment_rag_parsed_content_too_large'
 export const SESSION_ATTACHMENT_RAG_LARGE_ATTACHMENT_WARNING = 'session_attachment_rag_large_attachment_warning'
-const SESSION_ATTACHMENT_RAG_AUTH_ERROR_PATTERNS = [
-  'provider chatbox-ai not set',
-  'chatbox-ai not set',
-  'missing token for rerank provider: chatbox-ai',
-]
-const SESSION_ATTACHMENT_RAG_INDEXING_ERROR_PATTERNS = [
-  'chatbox_session_rag_vectors.db',
-  'connectionfailed("unable to open connection to local database',
-  'session attachment rag vector store not initialized',
-]
-let sessionRagCapabilityCache:
-  | {
-      key: string
-      value: boolean
-    }
-  | undefined
+
+export function isSessionAttachmentRagAuthError(_errorCode: string | undefined): boolean {
+  return false
+}
+
+export function isSessionAttachmentRagIndexingError(_errorCode: string | undefined): boolean {
+  return false
+}
 
 type ContentStats = {
   lineCount: number
@@ -127,64 +118,6 @@ function hasParsedText(content: string): boolean {
 
 function canFallbackToChatboxAI(): boolean {
   return Boolean(settingActions.getLicenseKey())
-}
-
-export function isSessionAttachmentRagAuthError(errorCode: string | undefined): boolean {
-  if (!errorCode) {
-    return false
-  }
-  if (errorCode === SESSION_ATTACHMENT_RAG_REQUIRES_CHATBOX_AI_ERROR) {
-    return true
-  }
-  const normalized = errorCode.toLowerCase()
-  return SESSION_ATTACHMENT_RAG_AUTH_ERROR_PATTERNS.some((pattern) => normalized.includes(pattern))
-}
-
-export function isSessionAttachmentRagIndexingError(errorCode: string | undefined): boolean {
-  if (!errorCode) {
-    return false
-  }
-  const normalized = errorCode.toLowerCase()
-  return SESSION_ATTACHMENT_RAG_INDEXING_ERROR_PATTERNS.some((pattern) => normalized.includes(pattern))
-}
-
-function hasUsableSessionAttachmentRagLicense(): boolean {
-  const settings = settingsStore.getState()
-  if (!settings.licenseKey) {
-    return false
-  }
-  if (settings.licenseActivationMethod === 'login') {
-    return !!authInfoStore.getState().getTokens()
-  }
-  return true
-}
-
-async function canUseSessionAttachmentRag(): Promise<boolean> {
-  const licenseKey = settingActions.getLicenseKey() || ''
-  const hasUsableLicense = hasUsableSessionAttachmentRagLicense()
-  const capabilityCacheKey = `${licenseKey}:${hasUsableLicense ? 'active' : 'inactive'}`
-  if (sessionRagCapabilityCache?.key === capabilityCacheKey) {
-    log.debug(
-      `${SESSION_ATTACHMENT_RAG_LOG_PREFIX} Capability cache hit: embedding=${sessionRagCapabilityCache.value}, hasLicense=${Boolean(licenseKey)}`
-    )
-    return sessionRagCapabilityCache.value
-  }
-
-  if (!hasUsableLicense) {
-    log.debug(
-      `${SESSION_ATTACHMENT_RAG_LOG_PREFIX} Capability skipped: missing active Chatbox license, hasLicense=${Boolean(licenseKey)}, method=${settingsStore.getState().licenseActivationMethod ?? 'none'}, platform=${platform.type}`
-    )
-    sessionRagCapabilityCache = { key: capabilityCacheKey, value: false }
-    return false
-  }
-
-  const value = !!(await remote.getSessionRagConfig({ licenseKey: licenseKey || undefined }).catch(() => undefined))
-    ?.capabilities?.session_attachment_embedding
-  log.debug(
-    `${SESSION_ATTACHMENT_RAG_LOG_PREFIX} Capability fetched: embedding=${value}, hasLicense=${Boolean(licenseKey)}, platform=${platform.type}`
-  )
-  sessionRagCapabilityCache = { key: capabilityCacheKey, value }
-  return value
 }
 
 /**
@@ -330,29 +263,11 @@ export async function prepareFileAttachment(
       const sessionAttachmentWarningReason = isParsedContentVeryLarge(stats)
         ? SESSION_ATTACHMENT_RAG_LARGE_ATTACHMENT_WARNING
         : undefined
-      if (sessionAttachmentWarningReason) {
-        log.info(
-          `${SESSION_ATTACHMENT_RAG_LOG_PREFIX} Cached parsed content is very large: file="${file.name}", bytes=${stats.byteLength}, limit=${SESSION_ATTACHMENT_RAG_MAX_PARSED_BYTE_LENGTH}`
-        )
-      }
 
-      const isSessionAttachmentRagFileType = isSessionAttachmentRagSupportedFilePath(file.name)
-      const exceedsSessionAttachmentRagThreshold =
-        platform.type === 'desktop' &&
-        isSessionAttachmentRagFileType &&
-        stats.byteLength > SESSION_ATTACHMENT_RAG_INLINE_BYTE_THRESHOLD
-      const sessionAttachmentRagAllowed = exceedsSessionAttachmentRagThreshold
-        ? await canUseSessionAttachmentRag()
-        : false
-      const shouldUseSessionAttachmentRag =
-        exceedsSessionAttachmentRagThreshold && sessionAttachmentRagAllowed && !sessionAttachmentWarningReason
       const { lineCount, byteLength, tokenCountMap } = computePreviewMetadata(existingContent, existingTokenMap, {
-        includeFullTokenCounts: !shouldUseSessionAttachmentRag,
+        includeFullTokenCounts: true,
         stats,
       })
-      log.debug(
-        `${SESSION_ATTACHMENT_RAG_LOG_PREFIX} Cached preprocess decision: file="${file.name}", bytes=${stats.byteLength}, tokens=${tokenCountMap[TOKEN_CACHE_KEYS.default] ?? 0}, ragFileType=${isSessionAttachmentRagFileType}, exceedsThreshold=${exceedsSessionAttachmentRagThreshold}, ragMode=${shouldUseSessionAttachmentRag ? 'session-retrieval' : 'inline'}, allowed=${sessionAttachmentRagAllowed}`
-      )
 
       await storage.setItem(`${uniqKey}_tokenMap`, tokenCountMap)
 
@@ -360,7 +275,7 @@ export async function prepareFileAttachment(
         file,
         content: existingContent,
         storageKey: uniqKey,
-        ragMode: shouldUseSessionAttachmentRag ? 'session-retrieval' : 'inline',
+        ragMode: 'inline',
         parserType: existingParserType,
         tokenCountMap,
         lineCount,
@@ -425,38 +340,19 @@ export async function prepareFileAttachment(
     const sessionAttachmentWarningReason = isParsedContentVeryLarge(stats)
       ? SESSION_ATTACHMENT_RAG_LARGE_ATTACHMENT_WARNING
       : undefined
-    if (sessionAttachmentWarningReason) {
-      log.info(
-        `${SESSION_ATTACHMENT_RAG_LOG_PREFIX} Parsed content is very large: file="${file.name}", parser=${result.parserType}, bytes=${stats.byteLength}, limit=${SESSION_ATTACHMENT_RAG_MAX_PARSED_BYTE_LENGTH}`
-      )
-    }
 
-    const isSessionAttachmentRagFileType = isSessionAttachmentRagSupportedFilePath(file.name)
-    const exceedsSessionAttachmentRagThreshold =
-      platform.type === 'desktop' &&
-      isSessionAttachmentRagFileType &&
-      stats.byteLength > SESSION_ATTACHMENT_RAG_INLINE_BYTE_THRESHOLD
-    const sessionAttachmentRagAllowed = exceedsSessionAttachmentRagThreshold
-      ? await canUseSessionAttachmentRag()
-      : false
-    const shouldUseSessionAttachmentRag =
-      exceedsSessionAttachmentRagThreshold && sessionAttachmentRagAllowed && !sessionAttachmentWarningReason
     const { lineCount, byteLength, tokenCountMap } = computePreviewMetadata(result.content, result.tokenCountMap, {
-      includeFullTokenCounts: !shouldUseSessionAttachmentRag,
+      includeFullTokenCounts: true,
       stats,
     })
     await storage.setItem(`${result.storageKey}_tokenMap`, tokenCountMap)
     await storage.setItem(`${result.storageKey}_parserType`, result.parserType)
 
-    log.debug(
-      `${SESSION_ATTACHMENT_RAG_LOG_PREFIX} Preprocess decision: file="${file.name}", parser=${result.parserType}, bytes=${stats.byteLength}, tokens=${tokenCountMap[TOKEN_CACHE_KEYS.default] ?? 0}, ragFileType=${isSessionAttachmentRagFileType}, exceedsThreshold=${exceedsSessionAttachmentRagThreshold}, ragMode=${shouldUseSessionAttachmentRag ? 'session-retrieval' : 'inline'}, allowed=${sessionAttachmentRagAllowed}`
-    )
-
     return {
       file,
       content: result.content,
       storageKey: result.storageKey,
-      ragMode: shouldUseSessionAttachmentRag ? 'session-retrieval' : 'inline',
+      ragMode: 'inline',
       parserType: result.parserType,
       tokenCountMap,
       lineCount,
@@ -465,7 +361,7 @@ export async function prepareFileAttachment(
       sessionAttachmentWarningReason,
     }
   } catch (error) {
-    log.error(`${SESSION_ATTACHMENT_RAG_LOG_PREFIX} Failed to preprocess file "${file.name}":`, error)
+    log.error(`Failed to preprocess file "${file.name}":`, error)
     return {
       file,
       content: '',

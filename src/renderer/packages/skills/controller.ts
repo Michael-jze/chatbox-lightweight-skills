@@ -1,24 +1,4 @@
-import type { MarketplaceSkill, SkillInfo, SkillMetadata } from '@shared/types/skills'
-
-interface SkillScriptResult {
-  success: boolean
-  stdout: string
-  stderr: string
-  exitCode: number | null
-}
-
-interface SkillInstallResult {
-  success: boolean
-  skillName: string
-  error?: string
-}
-
-interface SkillUpdateResult {
-  hasUpdate: boolean
-  currentHash?: string
-  latestHash?: string
-  error?: string
-}
+import type { SkillInfo, SkillMetadata, SkillRuntimeSettings, SkillScriptResult } from '@shared/types/skills'
 
 export const skillsController = {
   discoverSkills(): Promise<SkillInfo[]> {
@@ -37,31 +17,46 @@ export const skillsController = {
     await window.electronAPI.invoke('skills:open-directory')
   },
 
-  executeScript(skillName: string, scriptName: string, args?: string[]): Promise<SkillScriptResult> {
-    return window.electronAPI.invoke('skills:execute-script', { skillName, scriptName, args })
+  runScript(params: {
+    sessionId: string
+    workspaceDir: string
+    skillName: string
+    scriptName: string
+    args?: string[]
+    runtime: SkillRuntimeSettings
+  }): Promise<SkillScriptResult> {
+    return window.electronAPI.invoke('skills:run-script', params)
   },
 
-  installSkill(owner: string, repo: string, skillPath: string): Promise<SkillInstallResult> {
-    return window.electronAPI.invoke('skills:install', { owner, repo, skillPath })
+  ensureWorkspace(params: {
+    sessionId: string
+    skillWorkspaceDir?: string
+    sandboxParentDir?: string
+  }): Promise<{ workspaceDir: string }> {
+    return window.electronAPI.invoke('skills:ensure-workspace', params)
   },
 
-  installMarketplaceSkill(skill: MarketplaceSkill): Promise<SkillInstallResult> {
-    return window.electronAPI.invoke('skills:install-marketplace', skill)
+  cleanupSession(sessionId: string, workspaceDir?: string): Promise<{ success: boolean }> {
+    return window.electronAPI.invoke('skills:cleanup-session', { sessionId, workspaceDir })
   },
 
-  deleteSkill(name: string): Promise<{ success: boolean; error?: string }> {
-    return window.electronAPI.invoke('skills:delete', name)
+  openEnvFileDialog(): Promise<{ canceled: boolean; path?: string }> {
+    return window.electronAPI.invoke('skills:open-env-file-dialog')
   },
 
-  scanRepo(owner: string, repo: string): Promise<Array<{ name: string; path: string; description?: string }>> {
-    return window.electronAPI.invoke('skills:scan-repo', owner, repo)
+  readGlobalMemory(customPath?: string): Promise<{ path: string; content: string }> {
+    return window.electronAPI.invoke('skills:read-global-memory', customPath)
   },
 
-  checkForUpdate(name: string): Promise<SkillUpdateResult> {
-    return window.electronAPI.invoke('skills:check-update', name)
+  writeGlobalMemory(content: string, customPath?: string): Promise<{ path: string }> {
+    return window.electronAPI.invoke('skills:write-global-memory', { content, path: customPath })
   },
 
-  checkForUpdatesBatch(): Promise<Record<string, { hasUpdate: boolean; error?: string }>> {
-    return window.electronAPI.invoke('skills:check-updates-batch')
+  getGlobalMemoryPath(customPath?: string): Promise<string> {
+    return window.electronAPI.invoke('skills:get-global-memory-path', customPath)
+  },
+
+  openGlobalMemoryFile(customPath?: string): Promise<{ success: boolean; path?: string }> {
+    return window.electronAPI.invoke('skills:open-global-memory', customPath)
   },
 }

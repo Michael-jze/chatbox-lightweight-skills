@@ -185,14 +185,15 @@ async function generateTaskResponse(taskId: string, targetMsg: Message, contextM
 
     const promptMessages = [systemMessage, ...filteredContext]
 
-    const skillSettings = settingsStore.getState().getSettings().skills
-    const enabledSkillNames = featureFlags.skills ? skillSettings.enabledSkillNames : []
+    const skillSettings = settingsStore.getState().skills
+    const skillRuntime = featureFlags.skills ? skillSettings : undefined
 
     const { tools, instructions } = await buildToolsForSession(model, {
       webBrowsing: true,
       messages: promptMessages,
       sandboxEnabled: true,
-      enabledSkillNames,
+      sessionId: taskId,
+      skillRuntime,
     })
 
     let injectedMessages = injectModelSystemPrompt(

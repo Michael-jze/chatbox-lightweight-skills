@@ -28,12 +28,12 @@ import * as autoLauncher from './autoLauncher'
 import { handleDeepLink } from './deeplinks'
 import { parseFile } from './file-parser'
 import Locale from './locales'
-import * as mcpIpc from './mcp/ipc-stdio-transport'
 import MenuBuilder from './menu'
 import { registerOAuthHandlers } from './oauth'
 import * as proxy from './proxy'
 import { registerSandboxHandlers } from './sandbox'
 import { registerSkillsHandlers } from './skills'
+import { cleanupAllSandboxes } from './skills/runtime'
 import {
   delStoreBlob,
   getConfig,
@@ -45,21 +45,7 @@ import {
 } from './store-node'
 import * as windowState from './window_state'
 
-const knowledgeBaseInitPromise = import('./knowledge-base/index.js')
-  .then((mod) => mod.getInitPromise())
-  .catch((error) => {
-    log.error('[KB] Failed to initialize knowledge base during bootstrap:', error)
-  })
-
 const TRUTHY_ENV_VALUES = new Set(['1', 'true', 'yes', 'on'])
-
-function initializeSessionAttachmentRagAfterAppReady() {
-  return import('./session-attachment-rag/index.js')
-    .then((mod) => mod.getInitPromise())
-    .catch((error) => {
-      log.error('[SessionAttachmentRAG] Failed to initialize during bootstrap:', error)
-    })
-}
 
 function isTruthyEnv(value: string | undefined): boolean {
   if (!value) {
@@ -507,9 +493,7 @@ if (!gotTheLock) {
   app
     .whenReady()
     .then(async () => {
-      await knowledgeBaseInitPromise
       await createWindow()
-      await initializeSessionAttachmentRagAfterAppReady()
       ensureTray()
       // Remove this if your app does not use auto updates
       // eslint-disable-next-line
@@ -560,7 +544,7 @@ if (!gotTheLock) {
         } catch (e) {
           log.error('shortcut: failed to unregister', e)
         }
-        mcpIpc.closeAllTransports()
+        cleanupAllSandboxes()
         destroyTray()
       })
       app.on('before-quit', () => {

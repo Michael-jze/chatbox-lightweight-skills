@@ -8,8 +8,6 @@ import { IndexedDBSessionMetaStorage, type SessionMetaStorage } from '@/storage/
 import { IndexedDBTaskSessionStorage, type TaskSessionStorage } from '@/storage/TaskSessionStorage'
 import { getBrowser, getOS } from '../packages/navigator'
 import type { Platform, PlatformType } from './interfaces'
-import type { KnowledgeBaseController } from './knowledge-base/interface'
-import type { SessionAttachmentRagController } from './session-attachment-rag/interface'
 import { IndexedDBStorage } from './storages'
 import WebExporter from './web_exporter'
 import webLogger from './web_logger'
@@ -182,14 +180,6 @@ export default class WebPlatform extends IndexedDBStorage implements Platform {
 
   installUpdate(): Promise<void> {
     throw new Error('Method not implemented.')
-  }
-
-  public getKnowledgeBaseController(): KnowledgeBaseController {
-    throw new Error('Method not implemented.')
-  }
-
-  public getSessionAttachmentRagController(): SessionAttachmentRagController {
-    throw new Error('Session attachment RAG is not implemented on web.')
   }
 
   public getImageGenerationStorage(): ImageGenerationStorage {

@@ -19,7 +19,6 @@ import {
   getUnsupportedFileType,
   isSupportedFile,
 } from '@shared/file-extensions'
-import { KNOWLEDGE_BASE_MAX_FILE_SIZE, KNOWLEDGE_BASE_MAX_FILE_SIZE_LABEL } from '@shared/knowledge-base'
 import { getModel } from '@shared/providers'
 import { formatNumber } from '@shared/utils'
 import {
@@ -31,19 +30,17 @@ import {
   IconCirclePlus,
   IconFilePencil,
   IconFolder,
-  IconHammer,
   IconLink,
   IconPhoto,
   IconPlayerStopFilled,
   IconPlus,
   IconSettings,
-  IconVocabulary,
   IconWorldWww,
 } from '@tabler/icons-react'
 import { useQuery } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
 import { useAtom, useAtomValue } from 'jotai'
-import _, { pick } from 'lodash'
+import _ from 'lodash'
 import type React from 'react'
 import { forwardRef, memo, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react'
 import { useDropzone } from 'react-dropzone'
@@ -51,7 +48,6 @@ import { useTranslation } from 'react-i18next'
 import { v4 as uuidv4 } from 'uuid'
 import { createModelDependencies } from '@/adapters'
 import useInputBoxHistory from '@/hooks/useInputBoxHistory'
-import { useKnowledgeBase } from '@/hooks/useKnowledgeBase'
 import { useMessageInput } from '@/hooks/useMessageInput'
 import { useProviders } from '@/hooks/useProviders'
 import { useSaveBlob } from '@/hooks/useSaveBlob'
@@ -79,31 +75,22 @@ import { useSession, useSessionSettings } from '@/stores/chatStore'
 import { settingsStore, useSettingsStore } from '@/stores/settingsStore'
 import { useUIStore } from '@/stores/uiStore'
 import { delay } from '@/utils'
-import { featureFlags } from '@/utils/feature-flags'
-import { trackEvent } from '@/utils/track'
 import {
-  type KnowledgeBase,
   type Message,
   ModelProviderEnum,
-  type SessionAttachment,
-  type SessionAttachmentIndexingStage,
   type SessionType,
   type ShortcutSendValue,
 } from '../../../shared/types'
 import * as dom from '../../hooks/dom'
-import { startPreparedSessionAttachmentIndexing } from '../../stores/sessionAttachmentRagIndexing'
 import * as sessionHelpers from '../../stores/sessionHelpers'
 import * as toastActions from '../../stores/toastActions'
 import type { PreprocessedFile } from '../../types/input-box'
 import { CompactionStatus } from '../chat/CompactionStatus'
-import { AdaptiveModal } from '../common/AdaptiveModal'
 import { CompressionModal } from '../common/CompressionModal'
 import { ScalableIcon } from '../common/ScalableIcon'
 import Disclaimer from '../Disclaimer'
 import ProviderImageIcon from '../icons/ProviderImageIcon'
-import KnowledgeBaseMenu from '../knowledge-base/KnowledgeBaseMenu'
 import ModelSelector from '../ModelSelector'
-import MCPMenu from '../mcp/MCPMenu'
 import { FileMiniCard, ImageMiniCard, LinkMiniCard } from './Attachments'
 import { ImageUploadInput } from './ImageUploadInput'
 import {
@@ -117,6 +104,8 @@ import {
   storeLinkPromise,
 } from './preprocessState'
 import TokenCountMenu from './TokenCountMenu'
+
+const CHAT_ATTACHMENT_MAX_FILE_SIZE = 50 * 1024 * 1024
 
 export type InputBoxPayload = {
   constructedMessage: Message
@@ -143,76 +132,6 @@ export type InputBoxProps = {
   onStartNewThread?(): boolean
   onRollbackThread?(): boolean
   onClickSessionSettings?(): boolean | Promise<boolean>
-}
-
-function mergeSessionAttachmentStatesIntoFiles(
-  files: PreprocessedFile[],
-  attachments: SessionAttachment[]
-): { files: PreprocessedFile[]; changed: boolean } {
-  if (files.length === 0 || attachments.length === 0) {
-    return { files, changed: false }
-  }
-
-  const attachmentStateMap = new Map(attachments.map((attachment) => [attachment.id, attachment]))
-  let changed = false
-  const nextFiles = files.map((file) => {
-    if (!file.sessionAttachmentId) {
-      return file
-    }
-    const attachment = attachmentStateMap.get(file.sessionAttachmentId)
-    if (!attachment) {
-      return file
-    }
-    const nextFile = {
-      ...file,
-      sessionAttachmentAvailability: attachment.availability ?? file.sessionAttachmentAvailability,
-      sessionAttachmentIndexStatus: attachment.indexStatus ?? file.sessionAttachmentIndexStatus,
-      sessionAttachmentChunkCount: attachment.chunkCount ?? file.sessionAttachmentChunkCount,
-      sessionAttachmentTotalChunks: attachment.totalChunks ?? file.sessionAttachmentTotalChunks,
-      sessionAttachmentEmbeddedChunks: attachment.embeddedChunks ?? file.sessionAttachmentEmbeddedChunks,
-      sessionAttachmentIndexingStage: attachment.indexingStage ?? file.sessionAttachmentIndexingStage,
-      error: attachment.error ?? file.error,
-    }
-    const fileChanged =
-      nextFile.sessionAttachmentAvailability !== file.sessionAttachmentAvailability ||
-      nextFile.sessionAttachmentIndexStatus !== file.sessionAttachmentIndexStatus ||
-      nextFile.sessionAttachmentChunkCount !== file.sessionAttachmentChunkCount ||
-      nextFile.sessionAttachmentTotalChunks !== file.sessionAttachmentTotalChunks ||
-      nextFile.sessionAttachmentEmbeddedChunks !== file.sessionAttachmentEmbeddedChunks ||
-      nextFile.sessionAttachmentIndexingStage !== file.sessionAttachmentIndexingStage ||
-      nextFile.error !== file.error
-    if (fileChanged) {
-      changed = true
-    }
-    return fileChanged ? nextFile : file
-  })
-
-  return { files: nextFiles, changed }
-}
-
-function getSessionAttachmentProgressValue(embeddedChunks?: number, totalChunks?: number): number | undefined {
-  if (!totalChunks || totalChunks <= 0 || embeddedChunks === undefined) return undefined
-  return Math.max(0, Math.min(100, Math.round((embeddedChunks / totalChunks) * 100)))
-}
-
-function getSessionAttachmentStageLabel(
-  stage: SessionAttachmentIndexingStage | undefined,
-  t: (key: string) => string
-): string {
-  switch (stage) {
-    case 'queued':
-      return t('Queued')
-    case 'chunking':
-      return t('Preparing')
-    case 'embedding':
-      return t('Indexing')
-    case 'finalizing':
-      return t('Finishing')
-    case 'ready':
-      return t('Indexed')
-    default:
-      return t('Indexing')
-  }
 }
 
 const InputBox = forwardRef<InputBoxRef, InputBoxProps>(
@@ -327,16 +246,10 @@ const InputBox = forwardRef<InputBoxRef, InputBoxProps>(
       return getContextMessageIds(currentSession, currentSessionMergedSettings?.maxContextMessageCount)
     }, [isNewSession, currentSessionMergedSettings?.maxContextMessageCount, currentSession])
 
-    const { knowledgeBase, setKnowledgeBase } = useKnowledgeBase({ isNewSession })
-
     const [showCompressionModal, setShowCompressionModal] = useState(false)
 
     const [links, setLinks] = useAtom(atoms.inputBoxLinksFamily(currentSessionId || 'new'))
     const [isSubmitting, setIsSubmitting] = useState(false)
-    const [unreadyAttachmentSubmitPrompt, setUnreadyAttachmentSubmitPrompt] = useState<{
-      opened: boolean
-      count: number
-    }>({ opened: false, count: 0 })
 
     const flushPreConstructedMessage = useCallback(() => {
       clearTimeout(debouncedUpdateTimerRef.current)
@@ -399,99 +312,12 @@ const InputBox = forwardRef<InputBoxRef, InputBoxProps>(
       return hasErrorFiles || hasErrorLinks
     }, [preConstructedMessage.preprocessingStatus])
 
-    const hasBlockedSessionRagFiles = useMemo(
-      () =>
-        preConstructedMessage.preprocessedFiles.some(
-          (file) => file.ragMode === 'session-retrieval' && file.sessionAttachmentAvailability === 'blocked'
-        ),
-      [preConstructedMessage.preprocessedFiles]
-    )
-    const hasSessionRetrievalFiles = useMemo(
-      () =>
-        preConstructedMessage.preprocessedFiles.some(
-          (file) => file.ragMode === 'session-retrieval' && file.sessionAttachmentAvailability !== 'blocked'
-        ),
-      [preConstructedMessage.preprocessedFiles]
-    )
-    const hasLargeAttachmentWarning = useMemo(
-      () =>
-        preConstructedMessage.preprocessedFiles.some(
-          (file) =>
-            file.sessionAttachmentWarningReason === sessionHelpers.SESSION_ATTACHMENT_RAG_LARGE_ATTACHMENT_WARNING
-        ),
-      [preConstructedMessage.preprocessedFiles]
-    )
-
     const disableSubmit = useMemo(
       () => !(hasTextContent || links?.length || attachments?.length || pictureKeys?.length),
       [hasTextContent, links, attachments, pictureKeys]
     )
 
     const { providers } = useProviders()
-    const preprocessedSessionAttachmentIds = useMemo(
-      () =>
-        Array.from(
-          new Set(
-            preConstructedMessage.preprocessedFiles.flatMap((file) =>
-              file.sessionAttachmentId ? [file.sessionAttachmentId] : []
-            )
-          )
-        ),
-      [preConstructedMessage.preprocessedFiles]
-    )
-    const { data: preprocessedAttachmentStates = [] } = useQuery<SessionAttachment[]>({
-      queryKey: [
-        'input-box-session-attachment-rag-attachments',
-        ...preprocessedSessionAttachmentIds.sort((a, b) => a - b),
-      ],
-      queryFn: () => {
-        if (platform.type !== 'desktop' || preprocessedSessionAttachmentIds.length === 0) {
-          return []
-        }
-        return platform.getSessionAttachmentRagController().getAttachments(preprocessedSessionAttachmentIds)
-      },
-      enabled: platform.type === 'desktop' && preprocessedSessionAttachmentIds.length > 0,
-      refetchInterval: (query): number | false => {
-        const attachments = (query.state.data as SessionAttachment[] | undefined) ?? []
-        return attachments.some(
-          (attachment) => attachment.indexStatus === 'pending' || attachment.indexStatus === 'indexing'
-        )
-          ? 1500
-          : false
-      },
-    })
-    const preprocessedAttachmentIndexStatusMap = useMemo(
-      () => new Map(preprocessedAttachmentStates.map((attachment) => [attachment.id, attachment.indexStatus])),
-      [preprocessedAttachmentStates]
-    )
-    const preprocessedAttachmentErrorMap = useMemo(
-      () => new Map(preprocessedAttachmentStates.map((attachment) => [attachment.id, attachment.error])),
-      [preprocessedAttachmentStates]
-    )
-    const preprocessedAttachmentProgressMap = useMemo(
-      () =>
-        new Map(
-          preprocessedAttachmentStates.map((attachment) => [
-            attachment.id,
-            {
-              totalChunks: attachment.totalChunks ?? 0,
-              embeddedChunks: attachment.embeddedChunks ?? 0,
-              indexingStage: attachment.indexingStage,
-              processingStartedAt: attachment.processingStartedAt,
-            },
-          ])
-        ),
-      [preprocessedAttachmentStates]
-    )
-    useEffect(() => {
-      if (preprocessedAttachmentStates.length === 0) {
-        return
-      }
-      setPreConstructedMessage((prev) => {
-        const result = mergeSessionAttachmentStatesIntoFiles(prev.preprocessedFiles, preprocessedAttachmentStates)
-        return result.changed ? { ...prev, preprocessedFiles: result.files } : prev
-      })
-    }, [preprocessedAttachmentStates, setPreConstructedMessage])
     const modelSelectorDisplayText = useMemo(() => {
       if (!model) {
         return t('Select Model')
@@ -512,7 +338,7 @@ const InputBox = forwardRef<InputBoxRef, InputBoxProps>(
     }, [providers, model])
 
     // Check if model supports tool use for files
-    const { data: modelSupportToolUseForFile = false, isFetched: isModelToolCapabilityFetched } = useQuery({
+    const { data: modelSupportToolUseForFile = false } = useQuery({
       queryKey: ['model-tool-capability', model?.provider, model?.modelId],
       queryFn: async () => {
         if (!model?.provider || !model?.modelId) {
@@ -541,8 +367,6 @@ const InputBox = forwardRef<InputBoxRef, InputBoxProps>(
       staleTime: 5 * 60 * 1000,
       gcTime: 10 * 60 * 1000,
     })
-    const showSessionRetrievalToolWarning =
-      hasSessionRetrievalFiles && isModelToolCapabilityFetched && !modelSupportToolUseForFile
 
     // Calculate token counts using unified cache layer
     const { contextTokens, currentInputTokens, totalTokens, isCalculating, pendingTasks, messageCount } =
@@ -669,8 +493,7 @@ const InputBox = forwardRef<InputBoxRef, InputBoxProps>(
     const { addInputBoxHistory, getPreviousHistoryInput, getNextHistoryInput, resetHistoryIndex } = useInputBoxHistory()
     resetHistoryIndexRef.current = resetHistoryIndex
 
-    type SubmitOptions = { allowUnreadySessionAttachments?: boolean }
-    const handleSubmitRef = useRef<(needGenerating?: boolean, options?: SubmitOptions) => void>(() => {})
+    const handleSubmitRef = useRef<(needGenerating?: boolean) => void>(() => {})
     const getPreviousHistoryInputRef = useRef(getPreviousHistoryInput)
     getPreviousHistoryInputRef.current = getPreviousHistoryInput
     const getNextHistoryInputRef = useRef(getNextHistoryInput)
@@ -679,15 +502,8 @@ const InputBox = forwardRef<InputBoxRef, InputBoxProps>(
     const insertLinksRef = useRef<(urls: string[]) => void>(() => {})
 
     const closeSelectModelErrorTipCb = useRef<NodeJS.Timeout>()
-    const handleSubmit = async (needGenerating = true, options: SubmitOptions = {}) => {
-      if (
-        disableSubmit ||
-        generating ||
-        isSubmitting ||
-        isPreprocessing ||
-        hasPreprocessErrors ||
-        hasBlockedSessionRagFiles
-      ) {
+    const handleSubmit = async (needGenerating = true) => {
+      if (disableSubmit || generating || isSubmitting || isPreprocessing || hasPreprocessErrors) {
         return
       }
 
@@ -708,39 +524,12 @@ const InputBox = forwardRef<InputBoxRef, InputBoxProps>(
 
       setIsSubmitting(true)
       try {
-        let preprocessedFilesForSubmit = preConstructedMessage.preprocessedFiles
-        const submitSessionAttachmentIds = Array.from(
-          new Set(
-            preprocessedFilesForSubmit.flatMap((file) => (file.sessionAttachmentId ? [file.sessionAttachmentId] : []))
-          )
-        )
-        if (platform.type === 'desktop' && submitSessionAttachmentIds.length > 0) {
-          const latestAttachmentStates = await platform
-            .getSessionAttachmentRagController()
-            .getAttachments(submitSessionAttachmentIds)
-          const result = mergeSessionAttachmentStatesIntoFiles(preprocessedFilesForSubmit, latestAttachmentStates)
-          preprocessedFilesForSubmit = result.files
-          if (result.changed) {
-            setPreConstructedMessage((prev) => ({ ...prev, preprocessedFiles: result.files }))
-          }
-        }
-        const unreadySessionAttachments = preprocessedFilesForSubmit.filter(
-          (file) =>
-            file.ragMode === 'session-retrieval' &&
-            file.sessionAttachmentAvailability !== 'blocked' &&
-            (file.sessionAttachmentIndexStatus ?? 'pending') !== 'ready'
-        )
-        if (unreadySessionAttachments.length > 0 && !options.allowUnreadySessionAttachments) {
-          setUnreadyAttachmentSubmitPrompt({ opened: true, count: unreadySessionAttachments.length })
-          return
-        }
-
         // Build the message with the latest input text, bypassing debounce delay
         const latestMessage = sessionHelpers.constructUserMessage(
           preConstructedMessage.draftMessageId,
           latestInputRef.current,
           pictureKeys,
-          preprocessedFilesForSubmit,
+          preConstructedMessage.preprocessedFiles,
           preConstructedMessage.preprocessedLinks
         )
         if (!latestMessage) {
@@ -913,30 +702,12 @@ const InputBox = forwardRef<InputBoxRef, InputBoxProps>(
       // 异步预处理文件，失败时标记为 error，并吞掉异常避免 Promise.all reject
       return sessionHelpers
         .prepareFileAttachment(file, { provider: model?.provider || '', modelId: model?.modelId || '' })
-        .then(async (preprocessedFile) => {
+        .then((preprocessedFile) => {
           if (!activeFilePreprocessingKeysRef.current.has(fileKey)) {
             return
           }
 
-          let nextPreprocessedFile: PreprocessedFile = { ...preprocessedFile, inputFileKey: fileKey }
-          if (platform.type === 'desktop') {
-            const draftMessageId = draftMessageIdRef.current || uuidv4()
-            const indexedFile = await startPreparedSessionAttachmentIndexing({
-              file,
-              preparedFile: nextPreprocessedFile,
-              sessionId: currentSessionId || 'new',
-              draftMessageId,
-              shouldContinue: () => activeFilePreprocessingKeysRef.current.has(fileKey),
-            })
-            if (!indexedFile) {
-              return
-            }
-            nextPreprocessedFile = indexedFile
-            if (indexedFile.draftMessageId) {
-              draftMessageIdRef.current = indexedFile.draftMessageId
-            }
-          }
-
+          const nextPreprocessedFile: PreprocessedFile = { ...preprocessedFile, inputFileKey: fileKey }
           setPreConstructedMessage((prev) =>
             onFileProcessed(prev, file, nextPreprocessedFile, 20, { fileKeys: [fileKey] })
           )
@@ -1014,14 +785,9 @@ const InputBox = forwardRef<InputBoxRef, InputBoxProps>(
           }))
           imageCount++
         } else {
-          if (file.size > KNOWLEDGE_BASE_MAX_FILE_SIZE) {
+          if (file.size > CHAT_ATTACHMENT_MAX_FILE_SIZE) {
             toastActions.add(
-              t(
-                'Chat attachments must be {{limit}} or smaller. Please upload larger documents through Knowledge Base.',
-                {
-                  limit: KNOWLEDGE_BASE_MAX_FILE_SIZE_LABEL,
-                }
-              )
+              t('The file size exceeds the limit of 50MB. Please reduce the file size and try again.')
             )
             continue
           }
@@ -1226,19 +992,6 @@ const InputBox = forwardRef<InputBoxRef, InputBoxProps>(
       }
     }, [quote])
 
-    const handleKnowledgeBaseSelect = useCallback(
-      (kb: KnowledgeBase | null) => {
-        if (!kb || kb.id === knowledgeBase?.id) {
-          setKnowledgeBase(undefined)
-          trackEvent('knowledge_base_disabled', { knowledge_base_name: knowledgeBase?.name })
-        } else {
-          setKnowledgeBase(pick(kb, 'id', 'name'))
-          trackEvent('knowledge_base_enabled', { knowledge_base_name: kb.name })
-        }
-      },
-      [knowledgeBase, setKnowledgeBase]
-    )
-
     // Show deprecated notice for legacy picture sessions
     if (sessionType === 'picture') {
       return (
@@ -1292,12 +1045,7 @@ const InputBox = forwardRef<InputBoxRef, InputBoxProps>(
               {/* Send Button */}
               <ActionIcon
                 disabled={
-                  (disableSubmit ||
-                    isPreprocessing ||
-                    isSubmitting ||
-                    isCompactionRunning ||
-                    hasPreprocessErrors ||
-                    hasBlockedSessionRagFiles) &&
+                  (disableSubmit || isPreprocessing || isSubmitting || isCompactionRunning || hasPreprocessErrors) &&
                   !generating
                 }
                 size={32}
@@ -1312,18 +1060,12 @@ const InputBox = forwardRef<InputBoxRef, InputBoxProps>(
                       isPreprocessing ||
                       isSubmitting ||
                       isCompactionRunning ||
-                      hasPreprocessErrors ||
-                      hasBlockedSessionRagFiles) &&
+                      hasPreprocessErrors) &&
                     'disabled:!opacity-100 !text-white'
                 )}
                 style={
                   !generating &&
-                  (disableSubmit ||
-                    isPreprocessing ||
-                    isSubmitting ||
-                    isCompactionRunning ||
-                    hasPreprocessErrors ||
-                    hasBlockedSessionRagFiles)
+                  (disableSubmit || isPreprocessing || isSubmitting || isCompactionRunning || hasPreprocessErrors)
                     ? { backgroundColor: 'rgba(222, 226, 230, 1)' }
                     : undefined
                 }
@@ -1343,68 +1085,6 @@ const InputBox = forwardRef<InputBoxRef, InputBoxProps>(
                 className="max-h-[30vh] overflow-y-auto"
                 onClick={() => dom.focusMessageInput()}
               >
-                {showSessionRetrievalToolWarning && (
-                  <Flex
-                    role="status"
-                    aria-live="polite"
-                    align="center"
-                    gap={8}
-                    className="w-full rounded-md px-2.5 py-2 mb-1"
-                    style={{
-                      border: '1px solid var(--chatbox-border-primary)',
-                      borderLeft: '3px solid var(--chatbox-tint-warning)',
-                      background: 'var(--chatbox-background-primary)',
-                    }}
-                  >
-                    <Box
-                      className="flex items-center justify-center rounded-full shrink-0"
-                      style={{
-                        width: 20,
-                        height: 20,
-                        background: 'var(--chatbox-background-secondary)',
-                        color: 'var(--chatbox-tint-warning)',
-                      }}
-                    >
-                      <ScalableIcon icon={IconAlertCircle} size={14} />
-                    </Box>
-                    <Text size="xs" lh={1.35} c="chatbox-warning" className="min-w-0">
-                      {t(
-                        'This model may not be able to read the uploaded document. Try another model if you want to ask about the file.'
-                      )}
-                    </Text>
-                  </Flex>
-                )}
-                {hasLargeAttachmentWarning && (
-                  <Flex
-                    role="status"
-                    aria-live="polite"
-                    align="center"
-                    gap={8}
-                    className="w-full rounded-md px-2.5 py-2 mb-1"
-                    style={{
-                      border: '1px solid var(--chatbox-border-primary)',
-                      borderLeft: '3px solid var(--chatbox-tint-warning)',
-                      background: 'var(--chatbox-background-primary)',
-                    }}
-                  >
-                    <Box
-                      className="flex items-center justify-center rounded-full shrink-0"
-                      style={{
-                        width: 20,
-                        height: 20,
-                        background: 'var(--chatbox-background-secondary)',
-                        color: 'var(--chatbox-tint-warning)',
-                      }}
-                    >
-                      <ScalableIcon icon={IconAlertCircle} size={14} />
-                    </Box>
-                    <Text size="xs" lh={1.35} c="chatbox-warning" className="min-w-0">
-                      {t(
-                        'This attachment is very large and may consume more points. You can send it anyway, or remove it and use a smaller file.'
-                      )}
-                    </Text>
-                  </Flex>
-                )}
                 {pictureKeys?.map((picKey) => (
                   <ImageMiniCard key={picKey} storageKey={picKey} onDelete={() => onImageDeleteClick(picKey)} />
                 ))}
@@ -1414,58 +1094,16 @@ const InputBox = forwardRef<InputBoxRef, InputBoxProps>(
                   const preprocessedFile = preConstructedMessage.preprocessedFiles.find(
                     (f) => f.inputFileKey === fileKey || StorageKeyGenerator.fileUniqKey(f.file) === fileKey
                   )
-                  const effectiveIndexStatus = preprocessedFile?.sessionAttachmentId
-                    ? (preprocessedAttachmentIndexStatusMap.get(preprocessedFile.sessionAttachmentId) ??
-                      preprocessedFile.sessionAttachmentIndexStatus)
-                    : preprocessedFile?.sessionAttachmentIndexStatus
-                  const effectiveAttachmentError = preprocessedFile?.sessionAttachmentId
-                    ? (preprocessedAttachmentErrorMap.get(preprocessedFile.sessionAttachmentId) ??
-                      preprocessedFile?.error)
-                    : preprocessedFile?.error
-                  const attachmentProgress = preprocessedFile?.sessionAttachmentId
-                    ? preprocessedAttachmentProgressMap.get(preprocessedFile.sessionAttachmentId)
-                    : undefined
-                  const totalChunks =
-                    attachmentProgress?.totalChunks ?? preprocessedFile?.sessionAttachmentTotalChunks ?? 0
-                  const embeddedChunks =
-                    attachmentProgress?.embeddedChunks ?? preprocessedFile?.sessionAttachmentEmbeddedChunks ?? 0
-                  const indexingStage =
-                    attachmentProgress?.indexingStage ?? preprocessedFile?.sessionAttachmentIndexingStage
-                  const progressValue = getSessionAttachmentProgressValue(embeddedChunks, totalChunks)
-                  const isSessionAttachmentTakingLong =
-                    !!attachmentProgress?.processingStartedAt &&
-                    effectiveIndexStatus !== 'ready' &&
-                    Date.now() - attachmentProgress.processingStartedAt > 30000
-                  const statusText =
-                    preprocessedFile?.ragMode === 'session-retrieval' && effectiveIndexStatus !== 'ready'
-                      ? progressValue !== undefined
-                        ? `${isSessionAttachmentTakingLong ? t('Still indexing') : getSessionAttachmentStageLabel(indexingStage, t)} · ${progressValue}%`
-                        : isSessionAttachmentTakingLong
-                          ? t('Still indexing')
-                          : getSessionAttachmentStageLabel(indexingStage, t)
-                      : status === 'processing'
-                        ? t('Preparing')
-                        : undefined
                   return (
                     <FileMiniCard
                       key={fileKey}
                       name={file.name}
                       fileType={file.type}
-                      status={
-                        effectiveAttachmentError
-                          ? 'error'
-                          : preprocessedFile?.ragMode === 'session-retrieval'
-                            ? effectiveIndexStatus === 'ready'
-                              ? 'completed'
-                              : 'processing'
-                            : status
-                      }
-                      statusText={statusText}
-                      progressValue={progressValue}
-                      isTakingLong={isSessionAttachmentTakingLong}
-                      errorMessage={effectiveAttachmentError}
+                      status={preprocessedFile?.error ? 'error' : status}
+                      statusText={status === 'processing' ? String(t('Preparing')) : undefined}
+                      errorMessage={preprocessedFile?.error}
                       onErrorClick={() => {
-                        const errorCode = effectiveAttachmentError
+                        const errorCode = preprocessedFile?.error
                         if (errorCode) {
                           void NiceModal.show('file-parse-error', {
                             errorCode,
@@ -1495,14 +1133,6 @@ const InputBox = forwardRef<InputBoxRef, InputBoxProps>(
                           platform.cancelMineruParse(filePath).catch(() => {
                             // Ignore cancellation errors
                           })
-                        }
-                        if (platform.type === 'desktop' && preprocessedFile?.sessionAttachmentId) {
-                          void platform
-                            .getSessionAttachmentRagController()
-                            .deleteAttachment(preprocessedFile.sessionAttachmentId)
-                            .catch(() => {
-                              // Ignore cancellation errors
-                            })
                         }
                         setPreConstructedMessage((prev) =>
                           cleanupFile(prev, file, { fileKeys: fileKeysToRemove, removeAttachment: true })
@@ -1562,43 +1192,6 @@ const InputBox = forwardRef<InputBoxRef, InputBoxProps>(
                   handleAttachLink={handleAttachLink}
                   t={t}
                 />
-
-                {featureFlags.mcp && (
-                  <MCPMenu>
-                    {(enabledTools) => (
-                      <UnstyledButton className="flex items-center gap-1 px-2 py-1 rounded-lg hover:bg-[var(--chatbox-background-tertiary)] transition-colors">
-                        <IconHammer
-                          size={toolbarIconSize}
-                          strokeWidth={1.8}
-                          className={
-                            enabledTools > 0
-                              ? 'text-[var(--chatbox-tint-brand)]'
-                              : 'text-[var(--chatbox-tint-secondary)]'
-                          }
-                        />
-                        {enabledTools > 0 && (
-                          <Text size="xs" className="text-[var(--chatbox-tint-brand)]">
-                            {enabledTools}
-                          </Text>
-                        )}
-                      </UnstyledButton>
-                    )}
-                  </MCPMenu>
-                )}
-
-                {featureFlags.knowledgeBase && !isSmallScreen && (
-                  <KnowledgeBaseMenu currentKnowledgeBaseId={knowledgeBase?.id} onSelect={handleKnowledgeBaseSelect}>
-                    <UnstyledButton className="flex items-center gap-1 px-2 py-1 rounded-lg hover:bg-[var(--chatbox-background-tertiary)] transition-colors">
-                      <IconVocabulary
-                        size={toolbarIconSize}
-                        strokeWidth={1.8}
-                        className={
-                          knowledgeBase ? 'text-[var(--chatbox-tint-brand)]' : 'text-[var(--chatbox-tint-secondary)]'
-                        }
-                      />
-                    </UnstyledButton>
-                  </KnowledgeBaseMenu>
-                )}
 
                 <Tooltip label={t('Web Search')} position="top" withArrow disabled={isSmallScreen}>
                   <UnstyledButton
@@ -1797,38 +1390,6 @@ const InputBox = forwardRef<InputBoxRef, InputBoxProps>(
             session={currentSession}
           />
         )}
-        <AdaptiveModal
-          opened={unreadyAttachmentSubmitPrompt.opened}
-          onClose={() => setUnreadyAttachmentSubmitPrompt((prev) => ({ ...prev, opened: false }))}
-          title={t('Document is still indexing')}
-          centered
-          size="sm"
-        >
-          <Stack gap="sm">
-            <Text size="sm" c="dimmed">
-              {t(
-                '{{count}} document(s) are still being prepared. If you send now, the answer may not use the full document.',
-                { count: unreadyAttachmentSubmitPrompt.count }
-              )}
-            </Text>
-            <AdaptiveModal.Actions>
-              <Button
-                variant="default"
-                onClick={() => setUnreadyAttachmentSubmitPrompt((prev) => ({ ...prev, opened: false }))}
-              >
-                {t('Wait')}
-              </Button>
-              <Button
-                onClick={() => {
-                  setUnreadyAttachmentSubmitPrompt((prev) => ({ ...prev, opened: false }))
-                  void handleSubmit(true, { allowUnreadySessionAttachments: true })
-                }}
-              >
-                {t('Send anyway')}
-              </Button>
-            </AdaptiveModal.Actions>
-          </Stack>
-        </AdaptiveModal>
       </Box>
     )
   }

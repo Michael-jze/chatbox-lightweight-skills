@@ -14,56 +14,15 @@ import { runCompactionWithUIState } from '@/packages/context-management'
 import { getModelDisplayName } from '@/packages/model-setting-utils'
 import { estimateTokensFromMessages } from '@/packages/token'
 import platform from '@/platform'
-import { SESSION_ATTACHMENT_RAG_LOG_PREFIX } from '../../../shared/session-attachment-rag/logging'
 import * as chatStore from '../chatStore'
-import { ensureMessageFileSessionAttachment } from '../sessionAttachmentRagIndexing'
 import * as settingActions from '../settingActions'
 import { settingsStore } from '../settingsStore'
 import { getSessionWebBrowsing } from './utils'
 
 const log = getLogger('session-messages')
 
-async function attachLargeFileRagMetadata(sessionId: string, message: Message): Promise<Message> {
-  if (platform.type !== 'desktop' || !message.files?.length) {
-    return message
-  }
-
-  let changed = false
-  const files = await Promise.all(
-    message.files.map(async (file) => {
-      if (file.ragMode !== 'session-retrieval' || !file.storageKey) {
-        return file
-      }
-
-      const nextFile = await ensureMessageFileSessionAttachment({
-        sessionId,
-        messageId: message.id,
-        file,
-      })
-      changed =
-        changed ||
-        nextFile.sessionAttachmentId !== file.sessionAttachmentId ||
-        nextFile.sessionAttachmentAvailability !== file.sessionAttachmentAvailability ||
-        nextFile.sessionAttachmentIndexStatus !== file.sessionAttachmentIndexStatus ||
-        nextFile.sessionAttachmentStatus !== file.sessionAttachmentStatus ||
-        nextFile.sessionAttachmentChunkCount !== file.sessionAttachmentChunkCount ||
-        nextFile.sessionAttachmentTotalChunks !== file.sessionAttachmentTotalChunks ||
-        nextFile.sessionAttachmentEmbeddedChunks !== file.sessionAttachmentEmbeddedChunks ||
-        nextFile.sessionAttachmentIndexingStage !== file.sessionAttachmentIndexingStage
-      return nextFile
-    })
-  )
-
-  if (!changed) {
-    return message
-  }
-
-  const updatedMessage = { ...message, files }
-  log.debug(
-    `${SESSION_ATTACHMENT_RAG_LOG_PREFIX} Attachment metadata attached to message: session=${sessionId}, message=${message.id}`
-  )
-  await chatStore.updateMessage(sessionId, message.id, updatedMessage)
-  return updatedMessage
+async function attachLargeFileRagMetadata(_sessionId: string, message: Message): Promise<Message> {
+  return message
 }
 
 /**
@@ -164,13 +123,6 @@ export async function persistStreamingMessage(
  * @param messageId
  */
 export async function removeMessage(sessionId: string, messageId: string) {
-  if (platform.type === 'desktop') {
-    try {
-      await platform.getSessionAttachmentRagController().deleteMessageAttachments(messageId)
-    } catch (error) {
-      console.warn('Failed to cleanup session attachment RAG entries for message deletion:', error)
-    }
-  }
   await chatStore.removeMessage(sessionId, messageId)
 }
 

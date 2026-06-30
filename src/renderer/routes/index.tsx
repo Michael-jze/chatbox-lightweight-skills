@@ -15,6 +15,7 @@ import { MessageLayoutSelector } from '@/components/common/MessageLayoutPreview'
 import { ScalableIcon } from '@/components/common/ScalableIcon'
 import { ImageInStorage } from '@/components/Image'
 import InputBox, { type InputBoxPayload } from '@/components/InputBox/InputBox'
+import SkillWorkspaceMenu from '@/components/skills/SkillWorkspaceMenu'
 import HomepageIcon from '@/components/icons/HomepageIcon'
 import Page from '@/components/layout/Page'
 import { useMyCopilots, useRemoteCopilotsByCursor } from '@/hooks/useCopilots'
@@ -29,6 +30,7 @@ import { submitNewUserMessage, switchCurrentSession } from '@/stores/sessionActi
 import { initEmptyChatSession } from '@/stores/sessionHelpers'
 import { useSettingsStore } from '@/stores/settingsStore'
 import { useUIStore } from '@/stores/uiStore'
+import { featureFlags } from '@/utils/feature-flags'
 import { getHomeWelcomeCardMode } from '@/utils/homeWelcomeCard'
 
 export const Route = createFileRoute('/')({
@@ -61,6 +63,7 @@ function Index() {
     id: 'new',
     ...initEmptyChatSession(),
   })
+  const [draftSkillWorkspaceDir, setDraftSkillWorkspaceDir] = useState<string | undefined>()
 
   const { providers } = useProviders()
   const hasLicense = useSettingsStore((s) => Boolean(s.licenseKey))
@@ -159,6 +162,7 @@ function Index() {
         messages: session.messages,
         copilotId: session.copilotId,
         settings: session.settings,
+        skillWorkspaceDir: draftSkillWorkspaceDir,
       })
 
       if (session.copilotId) {
@@ -335,6 +339,15 @@ function Index() {
             showCopilotsInNewSession && (
               <CopilotPicker onSelect={(copilot) => setSession((old) => ({ ...old, copilotId: copilot?.id }))} />
             )
+          )}
+
+          {featureFlags.skills && (
+            <Flex justify="flex-start" px="xs">
+              <SkillWorkspaceMenu
+                workspaceDir={draftSkillWorkspaceDir}
+                onSelect={setDraftSkillWorkspaceDir}
+              />
+            </Flex>
           )}
 
           <InputBox

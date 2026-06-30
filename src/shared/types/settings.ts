@@ -232,54 +232,7 @@ const ExtensionSettingsSchema = z.object({
     queritMaxResults: z.number().optional(),
     queritTimeRange: z.string().nullable().optional(),
   }),
-  knowledgeBase: z
-    .object({
-      models: z.object({
-        embedding: z
-          .object({
-            modelId: z.string(),
-            providerId: z.string(),
-          })
-          .nullable()
-          .optional(),
-        rerank: z
-          .object({
-            modelId: z.string(),
-            providerId: z.string(),
-          })
-          .nullable()
-          .optional(),
-      }),
-    })
-    .optional(),
-  // Document parser configuration for global default
   documentParser: DocumentParserConfigSchema.optional(),
-})
-
-const MCPTransportConfigSchema = z.discriminatedUnion('type', [
-  z.object({
-    type: z.literal('stdio'),
-    command: z.string(),
-    args: z.array(z.string()),
-    env: z.record(z.string(), z.string()).optional(),
-  }),
-  z.object({
-    type: z.literal('http'),
-    url: z.string(),
-    headers: z.record(z.string(), z.string()).optional(),
-  }),
-])
-
-const MCPServerConfigSchema = z.object({
-  id: z.string(),
-  name: z.string(),
-  enabled: z.boolean(),
-  transport: MCPTransportConfigSchema,
-})
-
-const MCPSettingsSchema = z.object({
-  servers: z.array(MCPServerConfigSchema),
-  enabledBuiltinServers: z.array(z.string()),
 })
 
 export enum Theme {
@@ -409,10 +362,20 @@ export const SettingsSchema = GlobalSessionSettingsSchema.extend({
   shortcuts: ShortcutSettingSchema,
 
   extension: ExtensionSettingsSchema,
-  mcp: MCPSettingsSchema,
   skills: SkillSettingsSchema.catch({
     enabledSkillNames: [],
-    translationEnabled: true,
+    allowSkillNames: [],
+    denySkillNames: [],
+    allowScriptNames: [],
+    denyScriptNames: [],
+    pythonInterpreter: 'python3',
+    nodeInterpreter: 'node',
+    envFilePath: '',
+    timeoutMs: 30_000,
+    maxOutputBytes: 1024 * 1024,
+    sandboxParentDir: '',
+    globalMemoryEnabled: true,
+    globalMemoryPath: '',
   }),
 })
 
@@ -438,9 +401,6 @@ export type ShortcutToggleWindowValue = z.infer<typeof ShortcutToggleWindowValue
 export type ShortcutName = keyof ShortcutSetting
 export type ShortcutSetting = z.infer<typeof ShortcutSettingSchema>
 export type ExtensionSettings = z.infer<typeof ExtensionSettingsSchema>
-export type MCPTransportConfig = z.infer<typeof MCPTransportConfigSchema>
-export type MCPServerConfig = z.infer<typeof MCPServerConfigSchema>
-export type MCPSettings = z.infer<typeof MCPSettingsSchema>
 
 // Re-export SkillSettings for convenience
 export type { SkillSettings } from './skills'

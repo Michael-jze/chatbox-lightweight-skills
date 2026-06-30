@@ -9,6 +9,7 @@ import { getDefaultStore } from 'jotai'
 import { omit } from 'lodash'
 import { router } from '@/router'
 import platform from '@/platform'
+import { skillsController } from '@/packages/skills/controller'
 import { sortSessionRecords } from '@/storage/SessionMetaStorage'
 import * as atoms from '../atoms'
 import * as chatStore from '../chatStore'
@@ -94,7 +95,7 @@ async function copySession(
   const newMessageForksHash = copyMessageForksWithMapping(sourceMessageForksHash, combinedIdMapping)
 
   const newSession = {
-    ...omit(source, 'id', 'messages', 'threads', 'messageForksHash', 'compactionPoints'),
+    ...omit(source, 'id', 'messages', 'threads', 'messageForksHash', 'compactionPoints', 'skillWorkspaceDir'),
     ...(sourceMeta.name ? { name: sourceMeta.name } : {}),
     messages: newMessages,
     threads: newThreads,
@@ -246,9 +247,9 @@ export async function clear(sessionId: string) {
   }
   if (platform.type === 'desktop') {
     try {
-      await platform.getSessionAttachmentRagController().deleteSessionAttachments(sessionId)
+      await skillsController.cleanupSession(sessionId, session.skillWorkspaceDir)
     } catch (error) {
-      console.warn('Failed to cleanup session attachment RAG entries while clearing session:', error)
+      console.warn('Failed to cleanup skill sandbox for session:', error)
     }
   }
   session.messages.forEach((msg) => {

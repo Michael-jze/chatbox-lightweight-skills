@@ -1,24 +1,32 @@
 import type { ModelInterface } from '@shared/models/types'
-import type { KnowledgeBase, Message } from '@shared/types'
-import type { SkillInfo } from '@shared/types/skills'
+import type { Message } from '@shared/types'
+import type { SkillInfo, SkillRuntimeSettings } from '@shared/types/skills'
+import { filterEnabledSkills } from '@shared/skills/policy'
 import { type ToolSet, tool } from 'ai'
 import { z } from 'zod'
-import { mcpController } from '@/packages/mcp/controller'
 import fileToolSet from '@/packages/model-calls/toolsets/file'
-import { getToolSet as getKBToolSet } from '@/packages/model-calls/toolsets/knowledge-base'
-import sandboxToolSet from '@/packages/model-calls/toolsets/sandbox'
-import { getToolSet as getSessionAttachmentRagToolSet } from '@/packages/model-calls/toolsets/session-attachment-rag'
 import { getToolSetDescription, parseLinkTool, webSearchTool } from '@/packages/model-calls/toolsets/web-search'
 import { skillsController } from '@/packages/skills/controller'
+import { formatGlobalMemoryInstructions, loadGlobalMemoryForPrompt } from '@/packages/skills/global-memory'
+import { runSkillScriptForSession } from '@/packages/skills/session-workspace'
 import { PROVIDERS_WITH_PARSE_LINK } from '@/packages/web-search'
 import * as settingActions from '@/stores/settingActions'
 
+export interface SkillWorkspaceRef {
+  id: string
+  skillWorkspaceDir?: string
+}
+
 export interface BuildToolsOptions {
   webBrowsing: boolean
-  knowledgeBase?: Pick<KnowledgeBase, 'id' | 'name'>
   messages: Message[]
   sandboxEnabled?: boolean
-  enabledSkillNames?: string[]
+  sessionId?: string
+  skillRuntime?: SkillRuntimeSettings & {
+    globalMemoryEnabled?: boolean
+    globalMemoryPath?: string
+  }
+  skillWorkspace?: SkillWorkspaceRef
 }
 
 export interface BuildToolsResult {
@@ -28,23 +36,6 @@ export interface BuildToolsResult {
 
 function escapeXml(str: string): string {
   return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-}
-
-function getSessionAttachmentRagIds(messages: Message[]): number[] {
-  return Array.from(
-    new Set(
-      messages.flatMap((message) =>
-        (message.files ?? [])
-          .filter(
-            (file) =>
-              file.ragMode === 'session-retrieval' &&
-              file.sessionAttachmentAvailability !== 'blocked' &&
-              typeof file.sessionAttachmentId === 'number'
-          )
-          .map((file) => file.sessionAttachmentId as number)
-      )
-    )
-  )
 }
 
 export function generateSkillsXml(skills: SkillInfo[], toolUseSupported = false): string {
@@ -58,7 +49,7 @@ export function generateSkillsXml(skills: SkillInfo[], toolUseSupported = false)
     .join('\n')
 
   const toolHint = toolUseSupported
-    ? "\nWhen a task matches a skill's description, use the load_skill tool to load its full instructions before proceeding.\n"
+    ? "\nWhen a task matches a skill's description, use the load_skill tool to load its full instructions before proceeding. Use run_skill_script to execute scripts referenced by a loaded skill.\n"
     : '\n'
 
   return `
@@ -70,52 +61,22 @@ ${toolHint}`
 
 /**
  * Builds the tool set and instructions for a chat session based on model capabilities and session options.
- *
- * Returns tools only for features the model supports.
- * Returns instructions for the system prompt describing available toolsets.
  */
 export async function buildToolsForSession(
   model: ModelInterface,
   options: BuildToolsOptions
 ): Promise<BuildToolsResult> {
-  const { webBrowsing, knowledgeBase, messages, sandboxEnabled, enabledSkillNames } = options
+  const { webBrowsing, messages, sandboxEnabled, sessionId, skillRuntime, skillWorkspace } = options
 
   const hasInlineFileOrLink = messages.some(
     (m) => m.links?.length || m.files?.some((file) => file.ragMode !== 'session-retrieval')
   )
-  const sessionAttachmentIds = getSessionAttachmentRagIds(messages)
   const needFileToolSet = hasInlineFileOrLink && model.isSupportToolUse('read-file')
-  const needSessionAttachmentRagToolSet = sessionAttachmentIds.length > 0 && model.isSupportToolUse('read-file')
-  const kbSupported = knowledgeBase && model.isSupportToolUse('knowledge-base')
   const webSupported = webBrowsing && model.isSupportToolUse('web-browsing')
   const searchProvider = settingActions.getExtensionSettings().webSearch.provider
   const includeParseLinkTool = webSupported && PROVIDERS_WITH_PARSE_LINK.has(searchProvider)
 
-  let kbToolSet: Awaited<ReturnType<typeof getKBToolSet>> | null = null
-  if (knowledgeBase && kbSupported) {
-    try {
-      kbToolSet = await getKBToolSet(knowledgeBase.id, knowledgeBase.name)
-    } catch (err) {
-      console.error('Failed to load knowledge base toolset:', err)
-    }
-  }
-
-  let sessionAttachmentRagToolSet: Awaited<ReturnType<typeof getSessionAttachmentRagToolSet>> | null = null
-  if (needSessionAttachmentRagToolSet) {
-    try {
-      sessionAttachmentRagToolSet = await getSessionAttachmentRagToolSet(sessionAttachmentIds)
-    } catch (err) {
-      console.error('Failed to load session attachment RAG toolset:', err)
-    }
-  }
-
   let instructions = ''
-  if (kbToolSet && kbSupported) {
-    instructions += kbToolSet.description
-  }
-  if (sessionAttachmentRagToolSet) {
-    instructions += sessionAttachmentRagToolSet.description
-  }
   if (needFileToolSet) {
     instructions += fileToolSet.description
   }
@@ -123,28 +84,17 @@ export async function buildToolsForSession(
     instructions += getToolSetDescription({ includeParseLink: includeParseLinkTool })
   }
   if (sandboxEnabled) {
+    const { default: sandboxToolSet } = await import('@/packages/model-calls/toolsets/sandbox')
     instructions += sandboxToolSet.description
   }
 
-  let tools: ToolSet = {
-    ...mcpController.getAvailableTools(),
-  }
+  let tools: ToolSet = {}
 
   if (webBrowsing && webSupported) {
     tools.web_search = webSearchTool
-    // Inject parse_link based on the selected provider's declared capability.
-    // Validation (Pro for build-in, API key for third parties) happens at execution time.
     if (includeParseLinkTool) {
       tools.parse_link = parseLinkTool
     }
-  }
-
-  if (kbToolSet && kbSupported) {
-    tools = { ...tools, ...kbToolSet.tools }
-  }
-
-  if (sessionAttachmentRagToolSet) {
-    tools = { ...tools, ...sessionAttachmentRagToolSet.tools }
   }
 
   if (needFileToolSet) {
@@ -152,11 +102,11 @@ export async function buildToolsForSession(
   }
 
   if (sandboxEnabled) {
+    const { default: sandboxToolSet } = await import('@/packages/model-calls/toolsets/sandbox')
     tools = { ...tools, ...sandboxToolSet.tools }
   }
 
-  // Skills integration
-  if (enabledSkillNames && enabledSkillNames.length > 0) {
+  if (skillRuntime) {
     let allSkills: SkillInfo[] = []
     try {
       allSkills = await skillsController.discoverSkills()
@@ -164,7 +114,15 @@ export async function buildToolsForSession(
       console.error('Failed to discover skills:', err)
     }
 
-    const enabledSkills = allSkills.filter((s) => enabledSkillNames.includes(s.name))
+    const enabledSkills = filterEnabledSkills(allSkills, skillRuntime)
+
+    const globalMemory = await loadGlobalMemoryForPrompt(
+      skillRuntime.globalMemoryEnabled ?? true,
+      skillRuntime.globalMemoryPath
+    )
+    if (globalMemory) {
+      instructions += formatGlobalMemoryInstructions(globalMemory)
+    }
 
     if (enabledSkills.length > 0) {
       instructions += generateSkillsXml(enabledSkills, model.isSupportToolUse())
@@ -177,8 +135,9 @@ export async function buildToolsForSession(
             name: z.string().describe('The name of the skill to load'),
           }),
           execute: async (input: { name: string }) => {
-            if (!enabledSkillNames.includes(input.name)) {
-              return { error: `Skill "${input.name}" is not enabled for this session.` }
+            const skill = enabledSkills.find((item) => item.name === input.name)
+            if (!skill) {
+              return { error: `Skill "${input.name}" is not available or blocked by policy.` }
             }
             const result = await skillsController.loadSkill(input.name)
             if (!result) {
@@ -188,27 +147,25 @@ export async function buildToolsForSession(
           },
         })
 
-        tools.execute_skill_script = tool({
-          description:
-            "Execute a script from a skill's scripts directory. Use when a loaded skill references executable scripts.",
-          inputSchema: z.object({
-            skill_name: z.string().describe('The name of the skill'),
-            script_name: z.string().describe('The script filename to execute'),
-            arguments: z.array(z.string()).optional().describe('Optional arguments to pass to the script'),
-          }),
-          execute: async (input: { skill_name: string; script_name: string; arguments?: string[] }) => {
-            if (!enabledSkillNames.includes(input.skill_name)) {
-              return {
-                success: false,
-                stdout: '',
-                stderr: `Skill "${input.skill_name}" is not enabled.`,
-                exitCode: null,
-              }
-            }
-            const result = await skillsController.executeScript(input.skill_name, input.script_name, input.arguments)
-            return result
-          },
-        })
+        if (sessionId && skillWorkspace) {
+          tools.run_skill_script = tool({
+            description:
+              "Execute a script from a skill's scripts directory using the configured Python or Node interpreter. Scripts run in the session sandbox directory.",
+            inputSchema: z.object({
+              skill_name: z.string().describe('The name of the skill'),
+              script_name: z.string().describe('The script filename to execute'),
+              arguments: z.array(z.string()).optional().describe('Optional arguments to pass to the script'),
+            }),
+            execute: async (input: { skill_name: string; script_name: string; arguments?: string[] }) => {
+              return runSkillScriptForSession(skillWorkspace, {
+                skillName: input.skill_name,
+                scriptName: input.script_name,
+                args: input.arguments,
+                runtime: skillRuntime,
+              })
+            },
+          })
+        }
       }
     }
   }

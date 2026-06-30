@@ -158,8 +158,6 @@ export function useSettingsStore<U>(selector: Parameters<typeof useStore<typeof 
 
 export const useLanguage = () => useSettingsStore((state) => state.language)
 export const useTheme = () => useSettingsStore((state) => state.theme)
-export const useMcpSettings = () => useSettingsStore((state) => state.mcp)
-
 export const useProviderSettings = (providerId: string) => {
   const providers = useSettingsStore((state) => state.providers)
 

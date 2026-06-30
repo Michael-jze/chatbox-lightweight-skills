@@ -20,10 +20,12 @@ import isEmpty from 'lodash/isEmpty'
 import { useMemo } from 'react'
 import { v4 as uuidv4 } from 'uuid'
 import platform from '@/platform'
+import { skillsController } from '@/packages/skills/controller'
 import storage, { StorageKey } from '@/storage'
 import type { SessionMetaStorage } from '@/storage/SessionMetaStorage'
 import { sortSessionRecords } from '@/storage/SessionMetaStorage'
 import { StorageKeyGenerator } from '@/storage/StoreStorage'
+import { featureFlags } from '@/utils/feature-flags'
 import * as defaults from '../../shared/defaults'
 import { getLogger } from '../lib/utils'
 import { migrateSession } from '../utils/session-utils'
@@ -199,7 +201,7 @@ async function runInChunks<T>(items: T[], chunkSize: number, worker: (item: T) =
 export async function createSession(newSession: Omit<Session, 'id'>, previousId?: string) {
   console.debug('chatStore', 'createSession', newSession)
   const { chat: lastUsedChatModel, picture: lastUsedPictureModel } = lastUsedModelStore.getState()
-  const session = {
+  let session: Session = {
     ...newSession,
     id: uuidv4(),
     settings: {
@@ -207,6 +209,20 @@ export async function createSession(newSession: Omit<Session, 'id'>, previousId?
       ...newSession.settings,
     },
   }
+
+  if (platform.type === 'desktop' && featureFlags.skills) {
+    try {
+      const { workspaceDir } = await skillsController.ensureWorkspace({
+        sessionId: session.id,
+        skillWorkspaceDir: newSession.skillWorkspaceDir,
+        sandboxParentDir: settingsStore.getState().skills.sandboxParentDir,
+      })
+      session = { ...session, skillWorkspaceDir: workspaceDir }
+    } catch (error) {
+      console.warn('Failed to initialize skill workspace:', error)
+    }
+  }
+
   await storage.setItemNow(StorageKeyGenerator.session(session.id), session)
 
   const metaStorage = await getMetaStorage()
@@ -311,9 +327,10 @@ export async function deleteSession(id: string) {
   console.debug('chatStore', 'deleteSession', id)
   if (platform.type === 'desktop') {
     try {
-      await platform.getSessionAttachmentRagController().deleteSessionAttachments(id)
+      const session = await getSession(id)
+      await skillsController.cleanupSession(id, session?.skillWorkspaceDir)
     } catch (error) {
-      console.warn('Failed to cleanup session attachment RAG entries for session deletion:', error)
+      console.warn('Failed to cleanup skill sandbox for session deletion:', error)
     }
   }
   await storage.removeItem(StorageKeyGenerator.session(id))
@@ -336,9 +353,10 @@ export async function deleteSessions(ids: string[]) {
   if (platform.type === 'desktop') {
     await runInChunks(uniqueIds, 10, async (id) => {
       try {
-        await platform.getSessionAttachmentRagController().deleteSessionAttachments(id)
+        const session = await getSession(id)
+        await skillsController.cleanupSession(id, session?.skillWorkspaceDir)
       } catch (error) {
-        console.warn('Failed to cleanup session attachment RAG entries for session deletion:', error)
+        console.warn('Failed to cleanup skill sandbox for session deletion:', error)
       }
     })
   }

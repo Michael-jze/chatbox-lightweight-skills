@@ -1,4 +1,5 @@
 import path, { resolve } from 'node:path'
+import fs from 'node:fs'
 import { sentryVitePlugin } from '@sentry/vite-plugin'
 import { TanStackRouterVite } from '@tanstack/router-plugin/vite'
 import react from '@vitejs/plugin-react'
@@ -134,6 +135,18 @@ export default defineConfig(({ mode }) => {
               },
               telemetry: false,
             })
+          : undefined,
+        isProduction
+          ? {
+              name: 'copy-builtin-skills',
+              writeBundle() {
+                const src = resolve(__dirname, 'src/main/skills/builtin')
+                const dest = resolve(__dirname, 'release/app/dist/main/builtin')
+                if (fs.existsSync(src)) {
+                  fs.cpSync(src, dest, { recursive: true })
+                }
+              },
+            }
           : undefined,
       ].filter(Boolean),
       build: {

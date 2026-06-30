@@ -95,8 +95,8 @@ export function DocumentParserSettings({ showTitle = true }: DocumentParserSetti
     setConnectionResult(undefined)
 
     try {
-      const result = await platform.getKnowledgeBaseController().testMineruConnection(mineruToken)
-      setConnectionResult(result.success)
+      const result = await platform.testMineruConnection?.(mineruToken)
+      setConnectionResult(result?.success ?? false)
     } catch {
       setConnectionResult(false)
     } finally {

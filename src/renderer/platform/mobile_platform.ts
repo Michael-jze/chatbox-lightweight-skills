@@ -14,10 +14,8 @@ import { IndexedDBTaskSessionStorage, type TaskSessionStorage } from '@/storage/
 import { CHATBOX_BUILD_PLATFORM } from '@/variables'
 import { getBrowser, getOS } from '../packages/navigator'
 import type { Platform, PlatformType } from './interfaces'
-import type { KnowledgeBaseController } from './knowledge-base/interface'
 import MobileExporter from './mobile_exporter'
 import mobileLogger from './mobile_logger'
-import type { SessionAttachmentRagController } from './session-attachment-rag/interface'
 import { MobileSQLiteStorage } from './storages'
 import { parseTextFileLocally } from './web_platform_utils'
 
@@ -271,14 +269,6 @@ export default class MobilePlatform extends MobileSQLiteStorage implements Platf
 
   installUpdate(): Promise<void> {
     throw new Error('Method not implemented.')
-  }
-
-  public getKnowledgeBaseController(): KnowledgeBaseController {
-    throw new Error('Method not implemented.')
-  }
-
-  public getSessionAttachmentRagController(): SessionAttachmentRagController {
-    throw new Error('Session attachment RAG is not implemented on mobile.')
   }
 
   public getImageGenerationStorage(): ImageGenerationStorage {

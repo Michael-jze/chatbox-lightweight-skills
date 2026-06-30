@@ -73,14 +73,57 @@ export interface SkillInfo extends SkillMetadata {
 
 // ===== Zod Schemas =====
 
+// ===== Runtime / Policy Types =====
+
+export interface SkillScriptResult {
+  success: boolean
+  stdout: string
+  stderr: string
+  exitCode: number | null
+}
+
+export interface SkillRunScriptParams {
+  sessionId: string
+  workspaceDir: string
+  skillName: string
+  scriptName: string
+  args?: string[]
+  runtime: SkillRuntimeSettings
+}
+
+export interface SkillRuntimeSettings {
+  enabledSkillNames: string[]
+  allowSkillNames: string[]
+  denySkillNames: string[]
+  allowScriptNames: string[]
+  denyScriptNames: string[]
+  pythonInterpreter: string
+  nodeInterpreter: string
+  envFilePath: string
+  timeoutMs: number
+  maxOutputBytes: number
+}
+
 /**
- * Zod schema for skill settings
- * - enabledSkillNames: Array of custom skill names to enable
- * - translationEnabled: Whether translation feature is enabled for skills
+ * Zod schema for lightweight skill settings
  */
 export const SkillSettingsSchema = z.object({
   enabledSkillNames: z.array(z.string()).default([]),
-  translationEnabled: z.boolean().default(true),
+  allowSkillNames: z.array(z.string()).default([]),
+  denySkillNames: z.array(z.string()).default([]),
+  allowScriptNames: z.array(z.string()).default([]),
+  denyScriptNames: z.array(z.string()).default([]),
+  pythonInterpreter: z.string().default('python3'),
+  nodeInterpreter: z.string().default('node'),
+  /** Path to a JSON file merged into script process env (e.g. env.json). */
+  envFilePath: z.string().default(''),
+  timeoutMs: z.number().min(1000).max(300_000).default(30_000),
+  maxOutputBytes: z.number().min(1024).max(10_485_760).default(1024 * 1024),
+  /** Parent directory for per-session workspaces; empty uses system temp. */
+  sandboxParentDir: z.string().default(''),
+  globalMemoryEnabled: z.boolean().default(true),
+  /** Empty uses userData/global-memory.txt */
+  globalMemoryPath: z.string().default(''),
 })
 
 // ===== Type Exports =====
