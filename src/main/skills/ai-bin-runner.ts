@@ -1,7 +1,7 @@
 import type { SkillRunAiBinParams, SkillScriptResult } from '@shared/types/skills'
 import type { CompactSkillScriptResult } from '@shared/types/skills'
 import { isBinAllowed } from '@shared/skills/policy'
-import { isValidAiBinName, resolveAiEnvBinsDir, resolveAiEnvRoot, resolveAiEnvShPath } from '@shared/skills/ai-env'
+import { isValidAiBinName, resolveAiEnvShPath, resolveEnvironmentBinsDir, resolveEnvironmentRoot } from '@shared/skills/ai-env'
 import { spawn } from 'child_process'
 import fs from 'fs'
 import os from 'os'
@@ -82,13 +82,23 @@ export async function runAiBin(params: SkillRunAiBinParams): Promise<CompactSkil
     )
   }
 
-  const aiEnvRoot = resolveAiEnvRoot(runtime.aiEnvRoot, homeDir)
-  const binPath = path.join(resolveAiEnvBinsDir(runtime.aiEnvRoot, homeDir), binName)
+  const environmentRoot = resolveEnvironmentRoot(runtime.environmentRoot, homeDir)
+  if (!environmentRoot) {
+    return spillAndCompactSkillResult(
+      toRawResult({
+        success: false,
+        stderr: 'Tool environment root is not configured. Set it under Settings → Skills.',
+      }),
+      spillOptions
+    )
+  }
+
+  const binPath = path.join(resolveEnvironmentBinsDir(runtime.environmentRoot, homeDir), binName)
   if (!fs.existsSync(binPath)) {
     return spillAndCompactSkillResult(
       toRawResult({
         success: false,
-        stderr: `Bin not found: ${binPath} (AI_ENV_ROOT=${aiEnvRoot})`,
+        stderr: `Bin not found: ${binPath} (ENVIRONMENT_ROOT=${environmentRoot})`,
       }),
       spillOptions
     )
@@ -101,7 +111,7 @@ export async function runAiBin(params: SkillRunAiBinParams): Promise<CompactSkil
 
   const sandboxDir = ensureSessionSandbox(sessionId, workspaceDir)
   const resolvedBinPath = fs.realpathSync(binPath)
-  const envShPath = resolveAiEnvShPath(runtime.envShPath, runtime.aiEnvRoot, homeDir)
+  const envShPath = resolveAiEnvShPath(runtime.envShPath, runtime.environmentRoot, homeDir)
   const envFile = loadEnvFromFilePath(runtime.envFilePath)
   const { command, commandArgs } = buildAiBinSpawnCommand(resolvedBinPath, envShPath, validatedArgs)
   const timeoutMs = runtime.timeoutMs
@@ -114,7 +124,8 @@ export async function runAiBin(params: SkillRunAiBinParams): Promise<CompactSkil
     TERM: process.env.TERM ?? 'xterm-256color',
     CHATBOX_SESSION_ID: sessionId,
     SKILL_SANDBOX_DIR: sandboxDir,
-    AI_ENV_ROOT: aiEnvRoot,
+    AI_ENV_ROOT: environmentRoot,
+    ENVIRONMENT_ROOT: environmentRoot,
     ...(envFile.ok ? envFile.env : {}),
   }
 

@@ -67,7 +67,7 @@ export async function runSkillScript(
   skillsDir: string,
   params: SkillRunScriptParams,
   extraRoots: string[] = [],
-  options: { aiEnvSkillsRoot?: string } = {}
+  options: { externalRootsResolved?: string[] } = {}
 ): Promise<CompactSkillScriptResult> {
   const { sessionId, skillName, scriptName, runtime, workspaceDir } = params
 

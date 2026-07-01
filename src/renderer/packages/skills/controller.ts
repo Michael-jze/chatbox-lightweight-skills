@@ -1,12 +1,13 @@
 import type { CompactSkillScriptResult, SkillInfo, SkillMetadata, SkillRuntimeSettings, WorkspaceDirEntry } from '@shared/types/skills'
 
 export interface SkillDiscoveryOptions {
-  aiEnvRoot?: string
-  aiEnvSkillsEnabled?: boolean
+  externalSkillRoots?: string[]
+  environmentRoot?: string
 }
 
 export interface LoadSkillOptions {
-  aiEnvRoot?: string
+  externalSkillRoots?: string[]
+  environmentRoot?: string
   revisionAuthor?: string
 }
 

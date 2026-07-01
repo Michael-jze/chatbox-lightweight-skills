@@ -18,7 +18,7 @@ import { cleanupExpiredSandboxes, cleanupSessionSandbox, ensureSessionSandbox, r
 import { runSkillScript } from './runner'
 import { listWorkspaceDirectory, listWorkspaceDirectoryRelative, readWorkspaceFile, resolvePathWithinWorkspace, writeWorkspaceFile } from './workspace-tree'
 import { startWorkspaceWatch, stopWorkspaceWatch } from './workspace-watcher'
-import { resolveAiEnvRootAbsolute, resolveExtraSkillRoots, type SkillDiscoveryOptions } from './skill-roots'
+import { resolveEnvironmentRootAbsolute, resolveExtraSkillRoots, type SkillDiscoveryOptions } from './skill-roots'
 import { isValidSkillName } from './validation'
 
 const log = getLogger('skills:ipc-handlers')
@@ -37,8 +37,8 @@ export function registerSkillsHandlers() {
   ipcMain.handle('skills:discover', async (_event, options?: SkillDiscoveryOptions) => {
     try {
       const skillsDir = getSkillsDir()
-      const { extraRoots, aiEnvSkillsRoot } = getDiscoveryContext(options)
-      return discoverSkills(skillsDir, extraRoots, { aiEnvSkillsRoot })
+      const { extraRoots, externalRootsResolved } = getDiscoveryContext(options)
+      return discoverSkills(skillsDir, extraRoots, { externalRootsResolved })
     } catch (error) {
       log.error('skills:discover failed', error)
       throw error
@@ -51,7 +51,8 @@ export function registerSkillsHandlers() {
       _event,
       params: {
         name: string
-        aiEnvRoot?: string
+        externalSkillRoots?: string[]
+        environmentRoot?: string
         revisionAuthor?: string
       }
     ) => {
@@ -65,11 +66,11 @@ export function registerSkillsHandlers() {
         }
 
         const discoveryOptions: SkillDiscoveryOptions = {
-          aiEnvRoot: params.aiEnvRoot,
-          aiEnvSkillsEnabled: true,
+          externalSkillRoots: params.externalSkillRoots,
+          environmentRoot: params.environmentRoot,
         }
-        const { extraRoots, aiEnvSkillsRoot } = getDiscoveryContext(discoveryOptions)
-        const all = discoverSkills(getSkillsDir(), extraRoots, { aiEnvSkillsRoot })
+        const { extraRoots, externalRootsResolved } = getDiscoveryContext(discoveryOptions)
+        const all = discoverSkills(getSkillsDir(), extraRoots, { externalRootsResolved })
         const match = all.find((s) => s.name === name)
         if (!match) {
           return null
@@ -81,10 +82,12 @@ export function registerSkillsHandlers() {
           return null
         }
 
-        const aiEnvRoot = resolveAiEnvRootAbsolute({ aiEnvRoot: params.aiEnvRoot ?? '~/AI_Envirionment' })
+        const environmentRoot = resolveEnvironmentRootAbsolute({
+          environmentRoot: params.environmentRoot ?? '',
+        })
         const body = expandSkillBodyPlaceholders(
           parsed.body,
-          aiEnvRoot,
+          environmentRoot,
           params.revisionAuthor?.trim() || 'Chatbox'
         )
 
@@ -100,8 +103,8 @@ export function registerSkillsHandlers() {
     return getSkillsDir()
   })
 
-  ipcMain.handle('skills:resolve-ai-env-root', async (_event, aiEnvRoot?: string) => {
-    return resolveAiEnvRootAbsolute({ aiEnvRoot: aiEnvRoot ?? '~/AI_Envirionment' })
+  ipcMain.handle('skills:resolve-ai-env-root', async (_event, environmentRoot?: string) => {
+    return resolveEnvironmentRootAbsolute({ environmentRoot: environmentRoot ?? '' })
   })
 
   ipcMain.handle('skills:open-directory', async () => {
@@ -218,11 +221,11 @@ export function registerSkillsHandlers() {
       }
     ) => {
       try {
-        const { extraRoots, aiEnvSkillsRoot } = getDiscoveryContext({
-          aiEnvRoot: params.runtime.aiEnvRoot,
-          aiEnvSkillsEnabled: params.runtime.aiEnvSkillsEnabled,
+        const { extraRoots, externalRootsResolved } = getDiscoveryContext({
+          externalSkillRoots: params.runtime.externalSkillRoots,
+          environmentRoot: params.runtime.environmentRoot,
         })
-        return await runSkillScript(getSkillsDir(), params, extraRoots, { aiEnvSkillsRoot })
+        return await runSkillScript(getSkillsDir(), params, extraRoots, { externalRootsResolved })
       } catch (error) {
         log.error(`skills:run-script failed for ${params.skillName}/${params.scriptName}`, error)
         return compactSkillScriptResult({

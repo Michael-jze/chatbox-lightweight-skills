@@ -36,12 +36,12 @@ function formatListInput(values: string[] | undefined | null): string {
   return (values ?? []).join('\n')
 }
 
-function isAiEnvSkill(skill: SkillInfo): boolean {
-  return skill.source?.type === 'ai-environment'
+function isExternalSkill(skill: SkillInfo): boolean {
+  return skill.source?.type === 'external' || skill.source?.type === 'ai-environment'
 }
 
 function isLocalUserSkill(skill: SkillInfo): boolean {
-  return !skill.isBuiltin && !isAiEnvSkill(skill)
+  return !skill.isBuiltin && !isExternalSkill(skill)
 }
 
 const SkillCard: FC<{
@@ -61,9 +61,9 @@ const SkillCard: FC<{
               built-in
             </Badge>
           )}
-          {isAiEnvSkill(skill) && (
+          {isExternalSkill(skill) && (
             <Badge size="xs" variant="outline" color="blue">
-              AI Environment
+              External
             </Badge>
           )}
           {skill.disabled && (
@@ -97,8 +97,8 @@ export const SkillsSection: FC = () => {
       ...state.skills,
       allowBinNames: state.skills.allowBinNames ?? [],
       denyBinNames: state.skills.denyBinNames ?? [],
-      aiEnvRoot: state.skills.aiEnvRoot ?? '~/AI_Envirionment',
-      aiEnvSkillsEnabled: state.skills.aiEnvSkillsEnabled ?? true,
+      externalSkillRoots: state.skills.externalSkillRoots ?? [],
+      environmentRoot: state.skills.environmentRoot ?? '',
       envShPath: state.skills.envShPath ?? '',
       revisionAuthor: state.skills.revisionAuthor ?? 'Chatbox',
     }))
@@ -108,15 +108,15 @@ export const SkillsSection: FC = () => {
     setLoading(true)
     try {
       const discovered = await skillsController.discoverSkills({
-        aiEnvRoot: skillSettings.aiEnvRoot,
-        aiEnvSkillsEnabled: skillSettings.aiEnvSkillsEnabled,
+        externalSkillRoots: skillSettings.externalSkillRoots,
+        environmentRoot: skillSettings.environmentRoot,
       })
       setSkills(discovered)
 
-      const aiEnvSkills = discovered.filter((skill) => isAiEnvSkill(skill) && !skill.disabled)
+      const externalSkills = discovered.filter((skill) => isExternalSkill(skill) && !skill.disabled)
       const currentEnabled = settingsStore.getState().skills.enabledSkillNames ?? []
-      if (currentEnabled.length === 0 && aiEnvSkills.length > 0) {
-        const nextEnabled = aiEnvSkills.map((skill) => skill.name)
+      if (currentEnabled.length === 0 && externalSkills.length > 0) {
+        const nextEnabled = externalSkills.map((skill) => skill.name)
         settingsStore.setState((state) => {
           if (state.skills.enabledSkillNames.length > 0) {
             return state
@@ -134,7 +134,7 @@ export const SkillsSection: FC = () => {
     } finally {
       setLoading(false)
     }
-  }, [skillSettings.aiEnvRoot, skillSettings.aiEnvSkillsEnabled])
+  }, [skillSettings.externalSkillRoots, skillSettings.environmentRoot])
 
   useEffect(() => {
     void fetchSkills()
@@ -170,8 +170,8 @@ export const SkillsSection: FC = () => {
     })
   }, [])
 
-  const handleEnableAllAiEnvSkills = useCallback(() => {
-    const names = skills.filter((skill) => isAiEnvSkill(skill) && !skill.disabled).map((skill) => skill.name)
+  const handleEnableAllExternalSkills = useCallback(() => {
+    const names = skills.filter((skill) => isExternalSkill(skill) && !skill.disabled).map((skill) => skill.name)
     settingsStore.setState((state) => {
       const merged = new Set([...state.skills.enabledSkillNames, ...names])
       return { skills: { ...state.skills, enabledSkillNames: [...merged] } }
@@ -193,11 +193,11 @@ export const SkillsSection: FC = () => {
     updateSkillSettings({ sandboxParentDir: result.path })
   }, [updateSkillSettings])
 
-  const handleBrowseAiEnvRoot = useCallback(async () => {
+  const handleBrowseEnvironmentRoot = useCallback(async () => {
     if (!platform.openDirectoryDialog) return
     const result = await platform.openDirectoryDialog()
     if (result.canceled || !result.path) return
-    updateSkillSettings({ aiEnvRoot: result.path })
+    updateSkillSettings({ environmentRoot: result.path })
   }, [updateSkillSettings])
 
   const handleBrowseEnvFile = useCallback(async () => {
@@ -213,7 +213,7 @@ export const SkillsSection: FC = () => {
   }, [updateSkillSettings])
 
   const builtinSkills = skills.filter((skill) => skill.isBuiltin)
-  const aiEnvSkills = skills.filter((skill) => isAiEnvSkill(skill))
+  const externalSkills = skills.filter((skill) => isExternalSkill(skill))
   const localSkills = skills.filter((skill) => isLocalUserSkill(skill))
 
   const renderSkillGrid = (items: SkillInfo[]) => (
@@ -235,7 +235,7 @@ export const SkillsSection: FC = () => {
 
       <Flex justify="space-between" align="center" mb="md" wrap="wrap" gap="xs">
         <Text size="sm" c="chatbox-tertiary">
-          {t('Lightweight local Skills with AI_Envirionment mount and sandboxed ai_bin execution.')}
+          {t('Lightweight local Skills with configurable third-party paths and optional tool-environment ai_bin launchers.')}
         </Text>
         <Flex gap="xs">
           <Tooltip label={t('Open Skills Folder')} withArrow>
@@ -255,24 +255,28 @@ export const SkillsSection: FC = () => {
         </Flex>
       </Flex>
 
-      <Switch
+      <Textarea
         mb="md"
-        label={t('Mount AI_Envirionment SKILLS')}
-        description={t('Discover skills from {aiEnvRoot}/SKILLS', { aiEnvRoot: skillSettings.aiEnvRoot })}
-        checked={skillSettings.aiEnvSkillsEnabled}
-        onChange={(e) => updateSkillSettings({ aiEnvSkillsEnabled: e.currentTarget.checked })}
+        label={t('Third-party skill paths')}
+        description={t(
+          'One directory per line. Each folder is scanned recursively for SKILL.md. Example: ~/my-tools/SKILLS or ~/.cursor/skills'
+        )}
+        minRows={4}
+        value={formatListInput(skillSettings.externalSkillRoots)}
+        onChange={(e) => updateSkillSettings({ externalSkillRoots: parseListInput(e.currentTarget.value) })}
+        placeholder={'~/my-tools/SKILLS\n~/.cursor/skills'}
       />
 
       <Flex gap="xs" align="flex-end" mb="xl">
         <TextInput
           style={{ flex: 1 }}
-          label={t('AI Environment root')}
-          description={t('Contains SKILLS/ and BINS/ (default ~/AI_Envirionment)')}
-          value={skillSettings.aiEnvRoot}
-          onChange={(e) => updateSkillSettings({ aiEnvRoot: e.currentTarget.value })}
-          placeholder="~/AI_Envirionment"
+          label={t('Tool environment root (optional)')}
+          description={t('Directory containing BINS/ and env.sh for run_ai_bin. Leave empty to disable ai_bin tools.')}
+          value={skillSettings.environmentRoot}
+          onChange={(e) => updateSkillSettings({ environmentRoot: e.currentTarget.value })}
+          placeholder="~/my-tool-environment"
         />
-        <Button variant="light" onClick={() => void handleBrowseAiEnvRoot()}>
+        <Button variant="light" onClick={() => void handleBrowseEnvironmentRoot()}>
           {t('Browse')}
         </Button>
       </Flex>
@@ -281,10 +285,10 @@ export const SkillsSection: FC = () => {
         <TextInput
           style={{ flex: 1 }}
           label={t('env.sh path (reference)')}
-          description={t('ai_bin launchers source this file automatically. Used for validation/display only.')}
+          description={t('ai_bin launchers source this file automatically when present. Used for validation/display only.')}
           value={skillSettings.envShPath}
           onChange={(e) => updateSkillSettings({ envShPath: e.currentTarget.value })}
-          placeholder="~/AI_Envirionment/env.sh"
+          placeholder="~/my-tool-environment/env.sh"
         />
         <Button variant="light" onClick={() => void handleBrowseEnvSh()}>
           {t('Browse')}
@@ -313,7 +317,7 @@ export const SkillsSection: FC = () => {
         <TextInput
           style={{ flex: 1 }}
           label={t('Script environment file (JSON, optional)')}
-          description={t('Optional JSON env for run_skill_script / ai_bin. ai_bin also sources env.sh from AI_Envirionment.')}
+          description={t('Optional JSON env for run_skill_script / ai_bin. ai_bin also sources env.sh from the tool environment root when present.')}
           value={skillSettings.envFilePath}
           onChange={(e) => updateSkillSettings({ envFilePath: e.currentTarget.value })}
           placeholder="/path/to/env.json"
@@ -387,26 +391,26 @@ export const SkillsSection: FC = () => {
 
       <Flex justify="space-between" align="center" mb="sm" wrap="wrap" gap="xs">
         <Text size="sm" fw={600}>
-          {t('AI Environment Skills')}
+          {t('Third-party Skills')}
         </Text>
         <Flex gap="xs" align="center">
           <Badge size="sm" variant="light">
-            {aiEnvSkills.length}
+            {externalSkills.length}
           </Badge>
-          <Button variant="light" size="xs" onClick={handleEnableAllAiEnvSkills}>
+          <Button variant="light" size="xs" onClick={handleEnableAllExternalSkills}>
             {t('Enable all')}
           </Button>
         </Flex>
       </Flex>
 
-      {aiEnvSkills.length === 0 ? (
+      {externalSkills.length === 0 ? (
         <Paper radius="md" p="lg" withBorder className="border-dashed" mb="xl">
           <Text size="sm" c="chatbox-tertiary">
-            {t('No skills found under AI_Envirionment/SKILLS. Check the root path above.')}
+            {t('No skills found under configured third-party paths. Add directories above and click Refresh.')}
           </Text>
         </Paper>
       ) : (
-        <Box mb="xl">{renderSkillGrid(aiEnvSkills)}</Box>
+        <Box mb="xl">{renderSkillGrid(externalSkills)}</Box>
       )}
 
       <Flex justify="space-between" align="center" mb="sm">

@@ -1,38 +1,44 @@
 import type { SkillRuntimeSettings } from '@shared/types/skills'
 import {
-  buildExtraSkillRootCandidates,
+  buildImplicitSkillRootCandidates,
+  expandConfiguredSkillRoots,
   expandHomePath,
-  resolveAiEnvSkillsRoot,
 } from '@shared/skills/ai-env'
 import fs from 'fs'
 import os from 'os'
 
 export interface SkillDiscoveryOptions {
-  aiEnvRoot?: string
-  aiEnvSkillsEnabled?: boolean
+  externalSkillRoots?: string[]
+  environmentRoot?: string
 }
 
 export function resolveExtraSkillRoots(options: SkillDiscoveryOptions = {}): {
   extraRoots: string[]
-  aiEnvSkillsRoot?: string
+  externalRootsResolved: string[]
 } {
   const homeDir = os.homedir()
-  const candidates = buildExtraSkillRootCandidates({
-    aiEnvRoot: options.aiEnvRoot,
-    aiEnvSkillsEnabled: options.aiEnvSkillsEnabled,
+  const implicit = buildImplicitSkillRootCandidates({
     cwd: process.cwd(),
     homeDir,
   })
+  const configured = expandConfiguredSkillRoots(options.externalSkillRoots, homeDir)
+  const candidates = [...implicit, ...configured]
 
   const extraRoots = candidates.filter((candidate) => fs.existsSync(candidate))
-  const aiEnvSkillsRoot = resolveAiEnvSkillsRoot(options.aiEnvRoot, homeDir)
+  const externalRootsResolved = configured.filter((candidate) => fs.existsSync(candidate))
 
   return {
     extraRoots,
-    aiEnvSkillsRoot: fs.existsSync(aiEnvSkillsRoot) ? aiEnvSkillsRoot : undefined,
+    externalRootsResolved,
   }
 }
 
-export function resolveAiEnvRootAbsolute(runtime: Pick<SkillRuntimeSettings, 'aiEnvRoot'>): string {
-  return expandHomePath(runtime.aiEnvRoot, os.homedir())
+export function resolveEnvironmentRootAbsolute(runtime: Pick<SkillRuntimeSettings, 'environmentRoot'>): string {
+  return expandHomePath(runtime.environmentRoot ?? '', os.homedir())
+}
+
+/** @deprecated Use resolveEnvironmentRootAbsolute */
+export function resolveAiEnvRootAbsolute(runtime: { aiEnvRoot?: string; environmentRoot?: string }): string {
+  const root = runtime.environmentRoot ?? runtime.aiEnvRoot ?? ''
+  return expandHomePath(root, os.homedir())
 }

@@ -52,7 +52,7 @@ export function generateSkillsXml(skills: SkillInfo[], toolUseSupported = false)
     .join('\n')
 
   const toolHint = toolUseSupported
-    ? "\nWhen a task matches a skill's description, use load_skill to load its full instructions before proceeding. For workspace files: use workspace_ls to list directories; use workspace_write / workspace_read (or sandbox_write / sandbox_read when sandbox is available) for file content. Use sandbox_bash for shell when sandbox tools are registered. Use run_ai_bin for AI_Envirionment BINS commands (ai_bin_*). Do NOT pass large file bodies in run_skill_script arguments.\n"
+    ? "\nWhen a task matches a skill's description, use load_skill to load its full instructions before proceeding. For workspace files: use workspace_ls to list directories; use workspace_write / workspace_read (or sandbox_write / sandbox_read when sandbox is available) for file content. Use sandbox_bash for shell when sandbox tools are registered. Use run_ai_bin for configured tool-environment BINS commands (ai_bin_*) when available. Do NOT pass large file bodies in run_skill_script arguments.\n"
     : '\n'
 
   return `
@@ -119,8 +119,8 @@ export async function buildToolsForSession(
     let allSkills: SkillInfo[] = []
     try {
       allSkills = await skillsController.discoverSkills({
-        aiEnvRoot: skillRuntime.aiEnvRoot,
-        aiEnvSkillsEnabled: skillRuntime.aiEnvSkillsEnabled,
+        externalSkillRoots: skillRuntime.externalSkillRoots,
+        environmentRoot: skillRuntime.environmentRoot,
       })
     } catch (err) {
       console.error('Failed to discover skills:', err)
@@ -128,9 +128,9 @@ export async function buildToolsForSession(
 
     const enabledSkills = filterEnabledSkills(allSkills, skillRuntime)
 
-    let aiEnvRootAbsolute = skillRuntime.aiEnvRoot
+    let environmentRootAbsolute = skillRuntime.environmentRoot
     try {
-      aiEnvRootAbsolute = await skillsController.resolveAiEnvRoot(skillRuntime.aiEnvRoot)
+      environmentRootAbsolute = await skillsController.resolveAiEnvRoot(skillRuntime.environmentRoot)
     } catch {
       // keep configured path
     }
@@ -143,8 +143,12 @@ export async function buildToolsForSession(
       instructions += formatGlobalMemoryInstructions(globalMemory)
     }
 
-    if (skillRuntime.aiEnvSkillsEnabled) {
-      instructions += formatAiEnvInstructions(aiEnvRootAbsolute, skillRuntime.revisionAuthor)
+    const toolEnvironmentInstructions = formatAiEnvInstructions(
+      environmentRootAbsolute,
+      skillRuntime.revisionAuthor
+    )
+    if (toolEnvironmentInstructions) {
+      instructions += toolEnvironmentInstructions
     }
 
     if (enabledSkills.length > 0) {
@@ -163,7 +167,8 @@ export async function buildToolsForSession(
               return { error: `Skill "${input.name}" is not available or blocked by policy.` }
             }
             const result = await skillsController.loadSkill(input.name, {
-              aiEnvRoot: skillRuntime.aiEnvRoot,
+              externalSkillRoots: skillRuntime.externalSkillRoots,
+              environmentRoot: skillRuntime.environmentRoot,
               revisionAuthor: skillRuntime.revisionAuthor,
             })
             if (!result) {
@@ -173,10 +178,10 @@ export async function buildToolsForSession(
           },
         })
 
-        if (sessionId && skillWorkspace) {
+        if (sessionId && skillWorkspace && skillRuntime.environmentRoot?.trim()) {
           tools.run_ai_bin = tool({
             description:
-              'Run an AI_Envirionment BINS launcher (ai_bin_*) with arguments. The launcher sources env.sh automatically. Use after load_skill when the skill documents ai_bin commands.',
+              'Run a tool-environment BINS launcher (ai_bin_*) with arguments. The launcher sources env.sh automatically when present. Use after load_skill when the skill documents ai_bin commands.',
             inputSchema: z.object({
               bin_name: z.string().describe('The ai_bin launcher name, e.g. ai_bin_valyu'),
               arguments: z.array(z.string()).optional().describe('CLI arguments after the bin name'),

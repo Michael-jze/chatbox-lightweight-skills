@@ -11,7 +11,7 @@ import { z } from 'zod'
  * - skillPath: Optional file system path to skill
  */
 export interface SkillSource {
-  type: 'builtin' | 'local' | 'ai-environment' | 'marketplace' | 'github'
+  type: 'builtin' | 'local' | 'external' | 'ai-environment' | 'marketplace' | 'github'
   repo?: string
   commitHash?: string
   installedAt?: string
@@ -129,8 +129,10 @@ export interface SkillRuntimeSettings {
   pythonInterpreter: string
   nodeInterpreter: string
   envFilePath: string
-  aiEnvRoot: string
-  aiEnvSkillsEnabled: boolean
+  /** User-configured directories scanned for third-party SKILL.md trees (one path per entry). */
+  externalSkillRoots: string[]
+  /** Optional root with BINS/ and env.sh for run_ai_bin; empty disables tool-environment hints. */
+  environmentRoot: string
   envShPath: string
   revisionAuthor: string
   toolLogEnabled: boolean
@@ -139,10 +141,20 @@ export interface SkillRuntimeSettings {
   maxOutputBytes: number
 }
 
+import { z } from 'zod'
+import { migrateLegacySkillSettings } from '../skills/skill-settings-migrate'
+
 /**
  * Zod schema for lightweight skill settings
  */
-export const SkillSettingsSchema = z.object({
+export const SkillSettingsSchema = z.preprocess(
+  (input) => {
+    if (!input || typeof input !== 'object') {
+      return input
+    }
+    return migrateLegacySkillSettings(input as Record<string, unknown>)
+  },
+  z.object({
   enabledSkillNames: z.array(z.string()).default([]),
   allowSkillNames: z.array(z.string()).default([]),
   denySkillNames: z.array(z.string()).default([]),
@@ -152,9 +164,10 @@ export const SkillSettingsSchema = z.object({
   nodeInterpreter: z.string().default('node'),
   /** Path to a JSON file merged into script process env (e.g. env.json). */
   envFilePath: z.string().default(''),
-  /** Root of ~/AI_Envirionment-style layout (SKILLS + BINS). */
-  aiEnvRoot: z.string().default('~/AI_Envirionment'),
-  aiEnvSkillsEnabled: z.boolean().default(true),
+  /** Third-party skill scan roots (directories containing skill folders with SKILL.md). */
+  externalSkillRoots: z.array(z.string()).default([]),
+  /** Optional tool environment root (BINS/, env.sh) for run_ai_bin. */
+  environmentRoot: z.string().default(''),
   /** Path to env.sh for validation/display; ai_bin launchers source it themselves. */
   envShPath: z.string().default(''),
   /** Default author for Word track changes (--author). */
@@ -170,7 +183,8 @@ export const SkillSettingsSchema = z.object({
   globalMemoryEnabled: z.boolean().default(true),
   /** Empty uses userData/global-memory.txt */
   globalMemoryPath: z.string().default(''),
-})
+  })
+)
 
 // ===== Type Exports =====
 

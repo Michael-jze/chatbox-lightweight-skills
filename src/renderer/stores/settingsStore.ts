@@ -133,8 +133,8 @@ export const initSettingsStore = async () => {
         })
         const currentSkills = settingsStore.getState().skills
         const needsSkillsPatch =
-          mergedSkills.aiEnvRoot !== currentSkills.aiEnvRoot ||
-          mergedSkills.aiEnvSkillsEnabled !== currentSkills.aiEnvSkillsEnabled ||
+          mergedSkills.environmentRoot !== currentSkills.environmentRoot ||
+          JSON.stringify(mergedSkills.externalSkillRoots) !== JSON.stringify(currentSkills.externalSkillRoots) ||
           mergedSkills.revisionAuthor !== currentSkills.revisionAuthor ||
           (currentSkills.allowBinNames ?? []).length !== mergedSkills.allowBinNames.length ||
           (currentSkills.denyBinNames ?? []).length !== mergedSkills.denyBinNames.length ||

@@ -1,6 +1,6 @@
 # Lightweight Skills
 
-This build removes MCP and RAG tool injection and replaces them with a local Skills runtime integrated with `~/AI_Envirionment/`.
+This build removes MCP and RAG tool injection and replaces them with a local Skills runtime and optional workspace sandbox.
 
 ## Discovery
 
@@ -8,41 +8,49 @@ Skills are discovered from:
 
 - Built-in `workspace-files`
 - `userData/skills/**/SKILL.md`
-- `{aiEnvRoot}/SKILLS/**/SKILL.md` when AI Environment mount is enabled (default `~/AI_Envirionment`)
-- Optional extra roots: `.agents/skills`, `.cursor/skills`, `~/.agents/skills`, `~/.cursor/skills`
+- **Configured third-party paths** (`settings.skills.externalSkillRoots`, one directory per line)
+- Implicit extra roots: `.agents/skills`, `.cursor/skills` (project cwd and home)
 
-Each skill folder contains a `SKILL.md` file with YAML frontmatter (`name`, `description`). Optional `disable: true` excludes a skill from auto-enable.
+Each skill folder contains `SKILL.md` with YAML frontmatter (`name`, `description`). Optional `disable: true` excludes a skill from auto-enable.
+
+Skills found under `externalSkillRoots` are tagged `source.type = external` in the UI.
+
+## Tool environment (optional)
+
+`settings.skills.environmentRoot` points to a directory with:
+
+- `BINS/ai_bin_*` — executed via `run_ai_bin`
+- `env.sh` — sourced by launchers when present (override path via `envShPath`)
+
+When empty, `run_ai_bin` is not registered and no `<tool_environment>` block is injected.
+
+Legacy settings `aiEnvRoot` / `aiEnvSkillsEnabled` are migrated automatically into `externalSkillRoots` + `environmentRoot`.
 
 ## Progressive disclosure
 
-1. `buildToolsForSession()` injects `<available_skills>` metadata for enabled skills plus `<ai_environment>` tool hints.
-2. Models with tool use receive `load_skill` to fetch the full markdown body on demand (with `$AI_ENV_ROOT` and WorkBuddy placeholders expanded).
-3. `run_ai_bin` executes `AI_Envirionment/BINS/ai_bin_*` launchers (they source `env.sh` internally).
-4. `run_skill_script` executes scripts from a skill's `scripts/` directory (built-in workspace-files).
+1. `buildToolsForSession()` injects `<available_skills>` and optional `<tool_environment>`.
+2. `load_skill` fetches full markdown (`$AI_ENV_ROOT` placeholders use `environmentRoot`).
+3. `run_ai_bin` runs whitelisted launchers under `{environmentRoot}/BINS/`.
+4. `run_skill_script` runs skill `scripts/` via configured interpreters.
+5. Workspace and sandbox tools operate on the per-session directory.
 
 ## Security model
 
-- **Allow/deny lists** in Settings → Skills for skill names, script names, and ai_bin names.
-- **Session sandbox directory** — one stable folder per conversation.
-- **ai_bin whitelist** — only `ai_bin_*` files under `{aiEnvRoot}/BINS/`.
-- No arbitrary shell execution (`shell: false`, bash invokes known launcher path only).
+See README **Security & Sandbox Disclaimer**. Policy lists and workspace scoping target **accident prevention**, not malicious-code containment.
 
-## Settings schema
+## Settings schema (`settings.skills`)
 
-`settings.skills` stores:
-
-- `aiEnvRoot`, `aiEnvSkillsEnabled`, `envShPath`
+- `externalSkillRoots`, `environmentRoot`, `envShPath`
 - `enabledSkillNames`, allow/deny lists for skills, scripts, bins
-- `revisionAuthor` (Word track changes, replaces WorkBuddy)
-- `pythonInterpreter`, `nodeInterpreter`, optional `envFilePath` (JSON, for run_skill_script only)
+- `revisionAuthor`, `pythonInterpreter`, `nodeInterpreter`, `envFilePath`
 - `sandboxParentDir`, `globalMemoryEnabled`, `globalMemoryPath`
-- `timeoutMs` (default 120s for paper tooling), `maxOutputBytes`
+- `timeoutMs`, `maxOutputBytes`
 
 ## IPC surface
 
 - `skills:discover`, `skills:load`, `skills:run-script`, `skills:run-ai-bin`
-- `skills:resolve-ai-env-root`, `skills:ensure-workspace`, `skills:cleanup-session`
-- Global memory and directory helpers
+- `skills:resolve-ai-env-root` (resolves `environmentRoot`), workspace + global memory helpers
+- `sandbox:diagnose` (debug packaged sandbox-runtime loading)
 
 ## Removed capabilities
 
